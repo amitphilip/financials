@@ -12,20 +12,22 @@ type PinLoginFormProps = {
 
 export function PinLoginForm({ error }: PinLoginFormProps) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-4 py-8">
-      <Card className="w-full max-w-sm rounded-lg">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <LockKeyhole className="size-5" aria-hidden={true} />
+    <main className="flex min-h-svh items-center justify-center bg-background px-4 py-8">
+      <Card className="w-full max-w-sm rounded-2xl shadow-md">
+        <CardHeader className="pb-4 pt-6">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+              <LockKeyhole className="size-7" aria-hidden={true} />
             </div>
-            <CardTitle>Enter PIN</CardTitle>
+            <CardTitle className="text-xl">Enter PIN</CardTitle>
           </div>
         </CardHeader>
-        <CardContent>
-          <form action={loginWithPin} className="grid gap-4">
+        <CardContent className="px-6 pb-8">
+          <form action={loginWithPin} className="grid gap-5">
             <div className="grid gap-2">
-              <Label htmlFor="pin">PIN</Label>
+              <Label htmlFor="pin" className="text-sm font-medium">
+                PIN
+              </Label>
               <Input
                 id="pin"
                 name="pin"
@@ -34,17 +36,17 @@ export function PinLoginForm({ error }: PinLoginFormProps) {
                 autoComplete="current-password"
                 autoFocus
                 required
-                className="h-10"
+                className="h-12 text-center text-lg tracking-widest"
               />
             </div>
             {error ? (
-              <p className="text-xs text-destructive">
+              <p className="text-center text-sm text-destructive">
                 {error === "missing"
                   ? "Set AUTH_PIN in the environment before signing in."
-                  : "That PIN did not match."}
+                  : "Incorrect PIN. Please try again."}
               </p>
             ) : null}
-            <Button type="submit" className="w-full">
+            <Button type="submit" size="lg" className="h-12 w-full text-base">
               Unlock
             </Button>
           </form>

@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
 
 import "./globals.css";
+import { ClerkProvider } from "@clerk/nextjs";
+import { NumbersProvider } from "./numbers-context";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { JetBrains_Mono } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const jetbrainsMono = JetBrains_Mono({subsets:['latin'],variable:'--font-mono'});
 
 export const metadata: Metadata = {
   title: "Financials",
@@ -14,10 +20,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className="min-h-screen antialiased">
-        <TooltipProvider>{children}</TooltipProvider>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" suppressHydrationWarning className={cn("font-mono", jetbrainsMono.variable)}>
+        <body className="min-h-screen antialiased">
+          <NumbersProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+          </NumbersProvider>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

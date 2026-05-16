@@ -6,13 +6,13 @@ import { clearAuthCookie, setAuthCookie, verifyPin } from "./auth";
 
 export async function loginWithPin(formData: FormData) {
   if (!verifyPin(formData.get("pin"))) {
-    redirect("/?auth=invalid");
+    redirect("/login?auth=invalid");
   }
 
   const didSetCookie = await setAuthCookie();
 
   if (!didSetCookie) {
-    redirect("/?auth=missing");
+    redirect("/login?auth=missing");
   }
 
   redirect("/");
