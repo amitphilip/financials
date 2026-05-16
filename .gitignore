@@ -32,3 +32,5 @@ pnpm-debug.log*
 .vscode/
 *.swp
 *.swo
+
+env

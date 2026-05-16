@@ -1,6 +1,6 @@
 "use client";
 
-import { BrainCircuit, Building2, KeyRound, LayoutDashboard, LogOut, Settings, TrendingUp } from "lucide-react";
+import { BrainCircuit, Building2, KeyRound, LayoutDashboard, LogOut, Settings, ShieldCheck, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -25,7 +25,7 @@ const navItems = [
   { href: "/advisor", icon: BrainCircuit, label: "Advisor" },
 ];
 
-export function AppSidebar() {
+export function AppSidebar({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();
   const { openUserProfile } = useClerk();
 
@@ -52,6 +52,20 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname === "/admin"}
+                    tooltip="Admin"
+                  >
+                    <Link href="/admin">
+                      <ShieldCheck />
+                      <span>Admin</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
