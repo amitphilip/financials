@@ -237,7 +237,7 @@ type PersonState = {
 
 const DEFAULT_PERSON: PersonState = {
   salary: "",
-  kiwiRate: 3,
+  kiwiRate: 3.5,
   confirmed: false,
   include: true,
 };
@@ -314,7 +314,7 @@ const PersonForm = memo(function PersonForm({
 
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground">
-          KiwiSaver contribution <span className="text-muted-foreground/60">(IRD min 3%)</span>
+          KiwiSaver contribution <span className="text-muted-foreground/60">(IRD min 3.5%)</span>
         </Label>
         <RateSelector
           value={state.kiwiRate}
@@ -371,7 +371,7 @@ function TaxBracketTable() {
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
             Plus ACC earners' levy 1.67% (capped at $142,283).
-            KiwiSaver deducted before take-home; employer adds 3% on top.
+            KiwiSaver deducted before take-home (min 3.5%); employer adds 3% on top.
           </p>
         </div>
       )}
