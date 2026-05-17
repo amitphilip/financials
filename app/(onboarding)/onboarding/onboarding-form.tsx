@@ -17,18 +17,24 @@ export function OnboardingForm({ defaultName }: { defaultName: string }) {
   const [partnerName, setPartnerName] = useState("");
   const [partnerEmail, setPartnerEmail] = useState("");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
     setSaving(true);
-    await saveUserConfig({
-      name: name.trim(),
-      partnerName: partnerName.trim(),
-      partnerEmail: partnerEmail.trim() || undefined,
-    });
-    router.push("/");
-    router.refresh();
+    setError(null);
+    try {
+      await saveUserConfig({
+        name: name.trim(),
+        partnerName: partnerName.trim(),
+        partnerEmail: partnerEmail.trim() || undefined,
+      });
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setSaving(false);
+    }
   }
 
   return (
@@ -100,6 +106,9 @@ export function OnboardingForm({ defaultName }: { defaultName: string }) {
               />
             </div>
 
+            {error && (
+              <p className="text-sm text-destructive">{error}</p>
+            )}
             <Button
               type="submit"
               size="lg"
