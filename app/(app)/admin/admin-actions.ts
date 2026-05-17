@@ -99,5 +99,5 @@ export async function adminInviteUser(email: string) {
 export async function adminRevokeInvitation(invitationId: string) {
   await requireAdmin();
   const client = await clerkClient();
-  await client.invitations.revokeInvitation({ invitationId });
+  await client.invitations.revokeInvitation(invitationId);
 }
