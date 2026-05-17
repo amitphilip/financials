@@ -42,9 +42,9 @@ import {
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 const CURRENT_YEAR = new Date().getFullYear();
-const YEARS = Array.from({ length: CURRENT_YEAR - 1969 }, (_, i) => CURRENT_YEAR - i);
+const YEARS = Array.from({ length: 2100 - 1969 }, (_, i) => 2100 - i);
 const YEAR_OPTIONS = YEARS.map((y) => ({ value: String(y), label: String(y) }));
-const LOAN_TERMS = Array.from({ length: 30 }, (_, i) => i + 1);
+const LOAN_TERMS = Array.from({ length: 50 }, (_, i) => i + 1);
 const LOAN_TERM_OPTIONS = LOAN_TERMS.map((t) => ({
   value: String(t),
   label: `${t} year${t === 1 ? "" : "s"}`,

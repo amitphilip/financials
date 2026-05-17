@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   BrainCircuit,
   Building2,
+  Calculator,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Home" },
   { href: "/home-equity", icon: Building2, label: "Home Equity" },
   { href: "/sp500", icon: TrendingUp, label: "S&P 500" },
+  { href: "/compound", icon: Calculator, label: "Compound" },
   { href: "/advisor", icon: BrainCircuit, label: "Advisor" },
 ];
 
