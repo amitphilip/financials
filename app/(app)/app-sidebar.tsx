@@ -1,6 +1,6 @@
 "use client";
 
-import { BrainCircuit, Building2, KeyRound, LayoutDashboard, LogOut, Settings, ShieldCheck, TrendingUp } from "lucide-react";
+import { Banknote, BrainCircuit, Building2, Calculator, KeyRound, LayoutDashboard, LogOut, Settings, ShieldCheck, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -11,10 +11,12 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
@@ -22,7 +24,8 @@ const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Home" },
   { href: "/home-equity", icon: Building2, label: "Home Equity" },
   { href: "/sp500", icon: TrendingUp, label: "S&P 500" },
-  { href: "/advisor", icon: BrainCircuit, label: "Advisor" },
+  { href: "/compound", icon: Calculator, label: "Compound" },
+  { href: "/income", icon: Banknote, label: "Income" },
 ];
 
 export function AppSidebar({ isAdmin = false }: { isAdmin?: boolean }) {
@@ -66,6 +69,26 @@ export function AppSidebar({ isAdmin = false }: { isAdmin?: boolean }) {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarSeparator />
+        <SidebarGroup>
+          <SidebarGroupLabel>Advisor</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/advisor"}
+                  tooltip="Advisor"
+                >
+                  <Link href="/advisor">
+                    <BrainCircuit />
+                    <span>Advisor</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

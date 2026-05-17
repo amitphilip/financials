@@ -12,8 +12,8 @@ import {
 } from "recharts";
 import { Check, Info, Loader2, Pencil, Sparkles, X } from "lucide-react";
 
-import { calculate, type Frequency } from "./calculations";
-import { loadSP500, saveSP500 } from "./actions";
+import { calculateKiwisaver, type KiwiFrequency } from "./calculations";
+import { loadKiwisaver, saveKiwisaver } from "./actions";
 import { HiddenNumber } from "@/components/ui/hidden-number";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,21 +37,31 @@ import {
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const CURRENT_YEAR = new Date().getFullYear();
+
 const START_YEAR_OPTIONS = Array.from(
-  { length: CURRENT_YEAR - 1899 },
-  (_, i) => CURRENT_YEAR - i
+  { length: CURRENT_YEAR - 1999 },
+  (_, i) => CURRENT_YEAR - 1 - i
 ).map((y) => ({ value: String(y), label: String(y) }));
 
-const FREQ_OPTIONS: { value: Frequency; label: string }[] = [
+const BIRTH_YEAR_OPTIONS = Array.from(
+  { length: 2005 - 1940 + 1 },
+  (_, i) => 2005 - i
+).map((y) => ({ value: String(y), label: String(y) }));
+
+const FREQ_OPTIONS: { value: KiwiFrequency; label: string }[] = [
   { value: "none", label: "None" },
   { value: "weekly", label: "Weekly" },
   { value: "fortnightly", label: "Fortnightly" },
   { value: "monthly", label: "Monthly" },
-  { value: "quarterly", label: "Quarterly" },
   { value: "yearly", label: "Yearly" },
 ];
 
-const STEP_LABELS = ["Investment", "Payments"];
+const PROJECTION_OPTIONS = [5, 10, 15, 20, 25, 30, 35, 40].map((y) => ({
+  value: String(y),
+  label: `${y} years`,
+}));
+
+const STEP_LABELS = ["Balance & Rate", "Projection"];
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -67,7 +77,7 @@ function parse(s: string) {
   return isNaN(n) ? 0 : n;
 }
 
-function freqLabel(f: Frequency) {
+function freqLabel(f: KiwiFrequency) {
   return FREQ_OPTIONS.find((o) => o.value === f)?.label ?? f;
 }
 
@@ -123,7 +133,9 @@ const SearchSelect = memo(function SearchSelect({
   return (
     <Combobox
       value={value}
-      onValueChange={(v) => { if (v !== null) onChange(v as string); }}
+      onValueChange={(v) => {
+        if (v !== null) onChange(v as string);
+      }}
     >
       <ComboboxInput
         placeholder={placeholder}
@@ -156,7 +168,12 @@ function YearSelect({
 }) {
   const handleChange = useCallback((v: string) => onChange(Number(v)), [onChange]);
   return (
-    <SearchSelect value={String(value)} onChange={handleChange} options={options} placeholder="Year" />
+    <SearchSelect
+      value={String(value)}
+      onChange={handleChange}
+      options={options}
+      placeholder="Year"
+    />
   );
 }
 
@@ -178,8 +195,8 @@ function StepIndicator({ current, completed }: { current: number; completed: num
                   done
                     ? "bg-primary text-primary-foreground"
                     : active
-                      ? "border-2 border-primary text-primary"
-                      : "border-2 border-muted text-muted-foreground",
+                    ? "border-2 border-primary text-primary"
+                    : "border-2 border-muted text-muted-foreground",
                 ].join(" ")}
               >
                 {done && step < current ? <Check className="size-4" /> : step}
@@ -196,7 +213,7 @@ function StepIndicator({ current, completed }: { current: number; completed: num
             {i < STEP_LABELS.length - 1 && (
               <div
                 className={[
-                  "mb-5 h-px w-10 transition-colors",
+                  "mb-5 h-px w-12 transition-colors",
                   step < current ? "bg-primary" : "bg-muted",
                 ].join(" ")}
               />
@@ -237,58 +254,45 @@ function CompletedStep({
   );
 }
 
-// ─── step 1: investment ───────────────────────────────────────────────────────
+// ─── step 1: balance & rate ───────────────────────────────────────────────────
 
-type InvestmentForm = {
-  initialDepositStr: string;
+type BalanceForm = {
+  balanceStr: string;
   startYear: number;
-  endYear: number;
+  birthYear: number;
   rateStr: string;
   aiNote: string;
 };
 
-function StepInvestment({
+function StepBalance({
   data,
   onChange,
   onNext,
 }: {
-  data: InvestmentForm;
-  onChange: (patch: Partial<InvestmentForm>) => void;
+  data: BalanceForm;
+  onChange: (patch: Partial<BalanceForm>) => void;
   onNext: () => void;
 }) {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
   const [noteOpen, setNoteOpen] = useState(false);
 
-  const canFetchAI = data.startYear < data.endYear;
-  const valid = parse(data.initialDepositStr) > 0 && parse(data.rateStr) >= 0 && data.startYear < data.endYear;
-
-  const endYearOptions = useMemo(
-    () =>
-      Array.from(
-        { length: 2100 - data.startYear },
-        (_, i) => data.startYear + 1 + i
-      )
-        .reverse()
-        .map((y) => ({ value: String(y), label: String(y) })),
-    [data.startYear]
-  );
+  const valid = parse(data.balanceStr) >= 0 && parse(data.rateStr) >= 0;
 
   async function fetchAIRate() {
-    if (!canFetchAI) return;
     setAiLoading(true);
     setAiError("");
     setNoteOpen(false);
     try {
-      const res = await fetch(
-        `/api/sp500-rate?startYear=${data.startYear}&endYear=${data.endYear}`
-      );
+      const params = new URLSearchParams({ startYear: String(data.startYear) });
+      if (data.birthYear) params.set("birthYear", String(data.birthYear));
+      const res = await fetch(`/api/kiwisaver-rate?${params}`);
       const json = await res.json();
       if (!res.ok || !json.rate) throw new Error(json.error ?? "Unknown error");
       onChange({ rateStr: String(json.rate), aiNote: json.note ?? "" });
       setNoteOpen(true);
     } catch {
-      setAiError("Could not fetch rate. Enter manually.");
+      setAiError("Could not fetch rate. Please enter manually.");
     } finally {
       setAiLoading(false);
     }
@@ -296,36 +300,32 @@ function StepInvestment({
 
   return (
     <div className="grid gap-4">
-      <FieldRow label="Initial deposit">
+      <FieldRow label="Current KiwiSaver balance">
         <CurrencyInput
-          value={data.initialDepositStr}
-          onChange={(v) => onChange({ initialDepositStr: v })}
-          placeholder="10,000"
+          value={data.balanceStr}
+          onChange={(v) => onChange({ balanceStr: v })}
+          placeholder="25,000"
         />
       </FieldRow>
 
       <div className="grid grid-cols-2 gap-3">
-        <FieldRow label="Start year">
+        <FieldRow label="Year you started">
           <YearSelect
             value={data.startYear}
-            onChange={(y) => {
-              const newEnd = Math.max(data.endYear, y + 1);
-              onChange({ startYear: y, endYear: newEnd, aiNote: "" });
-              setNoteOpen(false);
-            }}
+            onChange={(y) => onChange({ startYear: y, rateStr: "", aiNote: "" })}
             options={START_YEAR_OPTIONS}
           />
         </FieldRow>
-        <FieldRow label="End year">
+        <FieldRow label="Birth year">
           <YearSelect
-            value={data.endYear}
-            onChange={(y) => { onChange({ endYear: y, aiNote: "" }); setNoteOpen(false); }}
-            options={endYearOptions}
+            value={data.birthYear}
+            onChange={(y) => onChange({ birthYear: y, rateStr: "", aiNote: "" })}
+            options={BIRTH_YEAR_OPTIONS}
           />
         </FieldRow>
       </div>
 
-      <FieldRow label="Avg annual return (%)">
+      <FieldRow label="High growth fund avg return (%)">
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Input
@@ -335,8 +335,11 @@ function StepInvestment({
               max={60}
               step={0.1}
               value={data.rateStr}
-              onChange={(e) => { onChange({ rateStr: e.target.value, aiNote: "" }); setNoteOpen(false); }}
-              placeholder="7"
+              onChange={(e) => {
+                onChange({ rateStr: e.target.value, aiNote: "" });
+                setNoteOpen(false);
+              }}
+              placeholder="11"
               className="h-12 pr-7"
             />
             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
@@ -349,8 +352,8 @@ function StepInvestment({
             size="icon"
             className="h-12 w-12 shrink-0"
             onClick={fetchAIRate}
-            disabled={!canFetchAI || aiLoading}
-            title="Fetch S&P 500 historical average with AI"
+            disabled={aiLoading}
+            title="Fetch NZ KiwiSaver high growth avg return with AI"
           >
             {aiLoading ? (
               <Loader2 className="size-4 animate-spin" />
@@ -360,7 +363,6 @@ function StepInvestment({
           </Button>
         </div>
 
-        {/* AI note popup */}
         {data.aiNote && noteOpen && (
           <div className="relative rounded-xl border bg-muted/40 px-3 py-2.5 text-xs leading-relaxed text-foreground">
             <button
@@ -384,9 +386,7 @@ function StepInvestment({
             AI-sourced rate — tap to see details
           </button>
         )}
-        {aiError && (
-          <p className="text-xs text-destructive">{aiError}</p>
-        )}
+        {aiError && <p className="text-xs text-destructive">{aiError}</p>}
       </FieldRow>
 
       <Button onClick={onNext} disabled={!valid} size="lg" className="h-12 w-full">
@@ -396,38 +396,48 @@ function StepInvestment({
   );
 }
 
-// ─── step 2: payments ────────────────────────────────────────────────────────
+// ─── step 2: projection ───────────────────────────────────────────────────────
 
-type ContributionForm = {
-  amountStr: string;
-  frequency: Frequency;
+type ProjectionForm = {
+  projectionYears: number;
+  contributionStr: string;
+  contributionFrequency: KiwiFrequency;
 };
 
-function StepPayments({
+function StepProjection({
   data,
   onChange,
   onDone,
   onBack,
 }: {
-  data: ContributionForm;
-  onChange: (patch: Partial<ContributionForm>) => void;
+  data: ProjectionForm;
+  onChange: (patch: Partial<ProjectionForm>) => void;
   onDone: () => void;
   onBack: () => void;
 }) {
   return (
     <div className="grid gap-4">
-      <FieldRow label="Regular contribution">
-        <CurrencyInput
-          value={data.amountStr}
-          onChange={(v) => onChange({ amountStr: v })}
-          placeholder="500"
+      <FieldRow label="Project ahead">
+        <SearchSelect
+          value={String(data.projectionYears)}
+          onChange={(v) => onChange({ projectionYears: Number(v) })}
+          options={PROJECTION_OPTIONS}
+          placeholder="Years ahead"
         />
       </FieldRow>
 
-      <FieldRow label="Frequency">
+      <FieldRow label="Regular contribution (optional)">
+        <CurrencyInput
+          value={data.contributionStr}
+          onChange={(v) => onChange({ contributionStr: v })}
+          placeholder="200"
+        />
+      </FieldRow>
+
+      <FieldRow label="Contribution frequency">
         <SearchSelect
-          value={data.frequency}
-          onChange={(v) => onChange({ frequency: v as Frequency })}
+          value={data.contributionFrequency}
+          onChange={(v) => onChange({ contributionFrequency: v as KiwiFrequency })}
           options={FREQ_OPTIONS}
           placeholder="Frequency"
         />
@@ -448,7 +458,7 @@ function StepPayments({
 // ─── results ─────────────────────────────────────────────────────────────────
 
 const portfolioChartConfig = {
-  totalInvested: { label: "Total Invested", color: "var(--chart-2)" },
+  totalContributed: { label: "Total Contributed", color: "var(--chart-2)" },
   growth: { label: "Growth", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
@@ -456,22 +466,21 @@ const gainChartConfig = {
   yoyGain: { label: "Annual Gain", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
-function Results({ result }: { result: ReturnType<typeof calculate> }) {
+function Results({ result }: { result: ReturnType<typeof calculateKiwisaver> }) {
   const { yearlyData } = result;
   const totalPoints = yearlyData.length;
   const xInterval = totalPoints <= 11 ? 0 : Math.max(1, Math.floor(totalPoints / 10) - 1);
 
-  const statCards = [
-    { label: "Final portfolio value", value: result.finalValue },
-    { label: "Total invested", value: result.totalInvested },
-    { label: "Investment growth", value: result.totalGrowth },
-  ];
+  const hasRetirement = result.age65 || result.age67;
 
   return (
     <div className="mt-6 grid gap-6">
-      {/* key metrics */}
       <div className="grid grid-cols-2 gap-3">
-        {statCards.map(({ label, value }) => (
+        {[
+          { label: "Projected balance", value: result.finalValue },
+          { label: "Total contributed", value: result.totalContributed },
+          { label: "Investment growth", value: result.totalGrowth },
+        ].map(({ label, value }) => (
           <Card key={label} className="rounded-2xl">
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">{label}</p>
@@ -483,7 +492,7 @@ function Results({ result }: { result: ReturnType<typeof calculate> }) {
         ))}
         <Card className="rounded-2xl">
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Return on invested</p>
+            <p className="text-xs text-muted-foreground">Return on contributed</p>
             <p className="mt-1 text-lg font-semibold text-green-600">
               +{result.growthPct}%
             </p>
@@ -493,27 +502,66 @@ function Results({ result }: { result: ReturnType<typeof calculate> }) {
 
       <Card className="rounded-2xl">
         <CardContent className="p-4">
-          <p className="text-xs text-muted-foreground">Effective CAGR on invested capital</p>
+          <p className="text-xs text-muted-foreground">Effective CAGR on contributed capital</p>
           <p className="mt-1 text-xl font-semibold text-green-600">
             {result.cagrPct}% / yr
           </p>
         </CardContent>
       </Card>
 
-      {/* stacked area: invested vs growth */}
+      {/* retirement milestones */}
+      {hasRetirement && (
+        <Card className="rounded-2xl shadow-md">
+          <CardHeader className="pb-2 pt-4">
+            <CardTitle className="text-sm font-semibold">Retirement milestones</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Projected balance when you can access KiwiSaver — rough monthly income assumes 20-year drawdown
+            </p>
+          </CardHeader>
+          <CardContent className="grid gap-3 pb-4">
+            {[result.age65, result.age67]
+              .filter(Boolean)
+              .map((m) => m && (
+                <div key={m.age} className="rounded-xl border bg-muted/30 p-3 grid gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold">Age {m.age} · {m.year}</span>
+                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">
+                      {m.age === 65 ? "NZ eligibility" : "Common target"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Balance (estate value)</p>
+                      <p className="text-base font-semibold tabular-nums">
+                        $<HiddenNumber value={m.balance} />
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Rough monthly over 20 yrs</p>
+                      <p className="text-base font-semibold tabular-nums text-green-600">
+                        $<HiddenNumber value={m.roughMonthlyOver20yrs} />
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="rounded-2xl">
         <CardHeader className="pb-2 pt-4">
-          <CardTitle className="text-sm font-semibold">Portfolio growth over time</CardTitle>
+          <CardTitle className="text-sm font-semibold">KiwiSaver projected growth</CardTitle>
         </CardHeader>
         <CardContent className="px-2 pb-4">
           <ChartContainer config={portfolioChartConfig} className="h-52 w-full">
             <AreaChart data={yearlyData} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
               <defs>
-                <linearGradient id="fillInvested" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="kiwiContribGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="var(--chart-2)" stopOpacity={0.6} />
                   <stop offset="95%" stopColor="var(--chart-2)" stopOpacity={0.2} />
                 </linearGradient>
-                <linearGradient id="fillGrowth" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="kiwiGrowthGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.7} />
                   <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.2} />
                 </linearGradient>
@@ -534,16 +582,14 @@ function Results({ result }: { result: ReturnType<typeof calculate> }) {
                 width={48}
               />
               <ChartTooltip
-                content={
-                  <ChartTooltipContent formatter={(v) => `$${fmt(Number(v))}`} />
-                }
+                content={<ChartTooltipContent formatter={(v) => `$${fmt(Number(v))}`} />}
               />
               <Area
                 type="monotone"
-                dataKey="totalInvested"
+                dataKey="totalContributed"
                 stackId="1"
                 stroke="var(--chart-2)"
-                fill="url(#fillInvested)"
+                fill="url(#kiwiContribGrad)"
                 strokeWidth={2}
                 dot={false}
               />
@@ -552,7 +598,7 @@ function Results({ result }: { result: ReturnType<typeof calculate> }) {
                 dataKey="growth"
                 stackId="1"
                 stroke="var(--chart-1)"
-                fill="url(#fillGrowth)"
+                fill="url(#kiwiGrowthGrad)"
                 strokeWidth={2}
                 dot={false}
               />
@@ -561,7 +607,6 @@ function Results({ result }: { result: ReturnType<typeof calculate> }) {
         </CardContent>
       </Card>
 
-      {/* year-over-year gain chart */}
       {yearlyData.length > 1 && (
         <Card className="rounded-2xl">
           <CardHeader className="pb-2 pt-4">
@@ -589,9 +634,7 @@ function Results({ result }: { result: ReturnType<typeof calculate> }) {
                   width={48}
                 />
                 <ChartTooltip
-                  content={
-                    <ChartTooltipContent formatter={(v) => `$${fmt(Number(v))}`} />
-                  }
+                  content={<ChartTooltipContent formatter={(v) => `$${fmt(Number(v))}`} />}
                 />
                 <Bar dataKey="yoyGain" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -599,192 +642,149 @@ function Results({ result }: { result: ReturnType<typeof calculate> }) {
           </CardContent>
         </Card>
       )}
-
-      {/* year-by-year table */}
-      <Card className="rounded-2xl">
-        <CardHeader className="pb-2 pt-4">
-          <CardTitle className="text-sm font-semibold">Year-by-year breakdown</CardTitle>
-        </CardHeader>
-        <CardContent className="px-0 pb-4">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b text-muted-foreground">
-                  <th className="px-4 py-2 text-left font-medium">Year</th>
-                  <th className="px-4 py-2 text-right font-medium">Portfolio</th>
-                  <th className="px-4 py-2 text-right font-medium">Invested</th>
-                  <th className="px-4 py-2 text-right font-medium">Growth</th>
-                </tr>
-              </thead>
-              <tbody>
-                {yearlyData.map((row) => (
-                  <tr key={row.year} className="border-b last:border-0">
-                    <td className="px-4 py-2.5 font-medium">{row.year}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">
-                      $<HiddenNumber value={row.portfolioValue} />
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">
-                      $<HiddenNumber value={row.totalInvested} />
-                    </td>
-                    <td
-                      className={[
-                        "px-4 py-2.5 text-right tabular-nums",
-                        row.growth > 0 ? "text-green-600" : "text-muted-foreground",
-                      ].join(" ")}
-                    >
-                      {row.growth >= 0 ? "+" : ""}$
-                      <HiddenNumber value={Math.abs(row.growth)} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
 
-// ─── main component ───────────────────────────────────────────────────────────
+// ─── main calculator ──────────────────────────────────────────────────────────
 
-export function SP500Calculator() {
-  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
+export function KiwisaverCalculator() {
+  const [step, setStep] = useState(1);
   const [completedUpTo, setCompletedUpTo] = useState(0);
-  const [saving, setSaving] = useState(false);
 
-  const [investment, setInvestment] = useState<InvestmentForm>({
-    initialDepositStr: "",
-    startYear: 2000,
-    endYear: CURRENT_YEAR,
-    rateStr: "7",
+  const [balance, setBalance] = useState<BalanceForm>({
+    balanceStr: "",
+    startYear: CURRENT_YEAR - 5,
+    birthYear: CURRENT_YEAR - 35,
+    rateStr: "",
     aiNote: "",
   });
 
-  const [contribution, setContribution] = useState<ContributionForm>({
-    amountStr: "",
-    frequency: "monthly",
+  const [projection, setProjection] = useState<ProjectionForm>({
+    projectionYears: 20,
+    contributionStr: "",
+    contributionFrequency: "none",
   });
 
+  // Load saved state on mount
   useEffect(() => {
-    loadSP500()
-      .then((saved) => {
-        if (!saved) return;
-        setInvestment((prev) => ({ ...prev, ...saved.investment }));
-        setContribution((prev) => ({
-          ...prev,
-          ...saved.contribution,
-          frequency: saved.contribution.frequency as Frequency,
-        }));
-        setCompletedUpTo(saved.completedUpTo);
-        if (saved.completedUpTo >= 1) setCurrentStep(Math.min(saved.completedUpTo, 2) as 1 | 2);
-      })
-      .catch(() => {});
+    loadKiwisaver().then((saved) => {
+      if (!saved) return;
+      setBalance({
+        balanceStr: saved.balanceStr,
+        startYear: saved.startYear,
+        birthYear: saved.birthYear ?? CURRENT_YEAR - 35,
+        rateStr: saved.rateStr,
+        aiNote: saved.aiNote,
+      });
+      setProjection({
+        projectionYears: saved.projectionYears,
+        contributionStr: saved.contributionStr,
+        contributionFrequency: saved.contributionFrequency as KiwiFrequency,
+      });
+      setCompletedUpTo(saved.completedUpTo);
+      if (saved.completedUpTo >= 2) setStep(2);
+    });
   }, []);
 
-  function persist(
-    nextInvestment: InvestmentForm,
-    nextContribution: ContributionForm,
-    nextCompleted: number
-  ) {
-    setSaving(true);
-    saveSP500({
-      investment: nextInvestment,
-      contribution: nextContribution,
-      completedUpTo: nextCompleted,
-    }).finally(() => setSaving(false));
+  function handleBalanceDone() {
+    const next = Math.max(completedUpTo, 1);
+    setCompletedUpTo(next);
+    setStep(2);
+    saveKiwisaver({
+      ...balance,
+      projectionYears: projection.projectionYears,
+      contributionStr: projection.contributionStr,
+      contributionFrequency: projection.contributionFrequency,
+      completedUpTo: next,
+    });
+  }
+
+  function handleProjectionDone() {
+    const next = Math.max(completedUpTo, 2);
+    setCompletedUpTo(next);
+    saveKiwisaver({
+      ...balance,
+      projectionYears: projection.projectionYears,
+      contributionStr: projection.contributionStr,
+      contributionFrequency: projection.contributionFrequency,
+      completedUpTo: next,
+    });
   }
 
   const result = useMemo(() => {
     if (completedUpTo < 2) return null;
-    return calculate(
-      {
-        initialDeposit: parse(investment.initialDepositStr),
-        startYear: investment.startYear,
-        endYear: investment.endYear,
-        annualRate: parse(investment.rateStr),
-      },
-      {
-        amount: parse(contribution.amountStr),
-        frequency: contribution.frequency,
-      }
+    const bal = parse(balance.balanceStr);
+    const rate = parse(balance.rateStr);
+    const contrib = parse(projection.contributionStr);
+    if (bal < 0 || rate < 0 || projection.projectionYears < 1) return null;
+    return calculateKiwisaver(
+      bal, rate, projection.projectionYears, contrib,
+      projection.contributionFrequency,
+      balance.birthYear || undefined
     );
-  }, [completedUpTo, investment, contribution]);
+  }, [balance, projection, completedUpTo]);
 
-  const investmentSummary =
-    completedUpTo >= 1
-      ? `$${fmt(parse(investment.initialDepositStr))} · ${investment.startYear}–${investment.endYear} · ${investment.rateStr}% p.a.`
-      : "";
-
-  const paymentSummary =
-    completedUpTo >= 2
-      ? contribution.frequency === "none" || !parse(contribution.amountStr)
-        ? "No regular contributions"
-        : `$${fmt(parse(contribution.amountStr))} ${freqLabel(contribution.frequency)}`
-      : "";
+  const balanceSummary = `$${fmt(parse(balance.balanceStr))} · ${balance.rateStr}% p.a. · born ${balance.birthYear}`;
+  const projectionSummary =
+    projection.projectionYears +
+    " yrs" +
+    (parse(projection.contributionStr) > 0
+      ? ` · $${fmt(parse(projection.contributionStr))} ${freqLabel(projection.contributionFrequency).toLowerCase()}`
+      : "");
 
   return (
-    <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-3">
-      {saving && (
-        <p className="mb-2 text-right text-xs text-muted-foreground">Saving…</p>
-      )}
-      <StepIndicator current={currentStep} completed={completedUpTo} />
+    <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
+      <StepIndicator current={step} completed={completedUpTo} />
 
       <div className="mt-4 grid gap-3">
         {/* Step 1 */}
-        {completedUpTo >= 1 && currentStep !== 1 ? (
-          <CompletedStep
-            label="Investment"
-            summary={investmentSummary}
-            onEdit={() => setCurrentStep(1)}
-          />
+        {step === 1 ? (
+          <Card className="rounded-2xl shadow-md">
+            <CardHeader className="pb-2 pt-4">
+              <CardTitle className="text-sm font-semibold">Balance &amp; Rate</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <StepBalance
+                data={balance}
+                onChange={(patch) => setBalance((p) => ({ ...p, ...patch }))}
+                onNext={handleBalanceDone}
+              />
+            </CardContent>
+          </Card>
         ) : (
-          currentStep === 1 && (
-            <Card className="rounded-2xl">
-              <CardHeader className="pb-3 pt-4">
-                <CardTitle className="text-base">Investment details</CardTitle>
-              </CardHeader>
-              <CardContent className="px-4 pb-4">
-                <StepInvestment
-                  data={investment}
-                  onChange={(p) => setInvestment((prev) => ({ ...prev, ...p }))}
-                  onNext={() => {
-                    const next = Math.max(completedUpTo, 1);
-                    setCompletedUpTo(next);
-                    setCurrentStep(2);
-                    persist(investment, contribution, next);
-                  }}
-                />
-              </CardContent>
-            </Card>
+          completedUpTo >= 1 && (
+            <CompletedStep
+              label="Balance &amp; Rate"
+              summary={balanceSummary}
+              onEdit={() => setStep(1)}
+            />
           )
         )}
 
         {/* Step 2 */}
-        {currentStep > 1 && completedUpTo >= 2 && currentStep !== 2 ? (
-          <CompletedStep
-            label="Payments"
-            summary={paymentSummary}
-            onEdit={() => setCurrentStep(2)}
-          />
+        {step === 2 && completedUpTo >= 1 ? (
+          <Card className="rounded-2xl shadow-md">
+            <CardHeader className="pb-2 pt-4">
+              <CardTitle className="text-sm font-semibold">Forward Projection</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <StepProjection
+                data={projection}
+                onChange={(patch) => setProjection((p) => ({ ...p, ...patch }))}
+                onDone={handleProjectionDone}
+                onBack={() => setStep(1)}
+              />
+            </CardContent>
+          </Card>
         ) : (
-          currentStep === 2 && (
-            <Card className="rounded-2xl">
-              <CardHeader className="pb-3 pt-4">
-                <CardTitle className="text-base">Regular contributions</CardTitle>
-              </CardHeader>
-              <CardContent className="px-4 pb-4">
-                <StepPayments
-                  data={contribution}
-                  onChange={(p) => setContribution((prev) => ({ ...prev, ...p }))}
-                  onDone={() => {
-                    setCompletedUpTo(2);
-                    persist(investment, contribution, 2);
-                  }}
-                  onBack={() => setCurrentStep(1)}
-                />
-              </CardContent>
-            </Card>
+          step > 2 &&
+          completedUpTo >= 2 && (
+            <CompletedStep
+              label="Forward Projection"
+              summary={projectionSummary}
+              onEdit={() => setStep(2)}
+            />
           )
         )}
       </div>

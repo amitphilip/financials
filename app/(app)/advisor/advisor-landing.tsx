@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, ChevronRight, Clock, TrendingUp } from "lucide-react";
+import { Building2, ChevronRight, Clock, PiggyBank, TrendingUp } from "lucide-react";
 
 import { AnimatedList } from "@/components/ui/animated-list";
 import { TextAnimate } from "@/components/ui/text-animate";
@@ -17,7 +17,7 @@ type Advisor = {
 };
 
 // AnimatedList stacks newest-first (last child → top).
-// Pass coming-soon items first so the available advisor lands at top.
+// Pass coming-soon items first so available advisors land at top.
 const ADVISORS: Advisor[] = [
   {
     id: "retirement",
@@ -42,6 +42,15 @@ const ADVISORS: Advisor[] = [
       "Compare the long-term wealth outcome of buying a home versus renting and investing the difference in the S&P 500.",
     icon: <Building2 className="h-5 w-5" />,
     href: "/advisor/buy-vs-rent",
+    available: true,
+  },
+  {
+    id: "kiwisaver",
+    title: "KiwiSaver Projection",
+    description:
+      "Enter your current balance, fetch the AI-sourced high growth fund average return, and project your KiwiSaver forward.",
+    icon: <PiggyBank className="h-5 w-5" />,
+    href: "/advisor/kiwisaver",
     available: true,
   },
 ];

@@ -10,10 +10,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Check, Info, Loader2, Pencil, Sparkles, X } from "lucide-react";
+import { Check, Pencil } from "lucide-react";
 
 import { calculate, type Frequency } from "./calculations";
-import { loadSP500, saveSP500 } from "./actions";
+import { loadCompound, saveCompound } from "./actions";
 import { HiddenNumber } from "@/components/ui/hidden-number";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -244,7 +244,6 @@ type InvestmentForm = {
   startYear: number;
   endYear: number;
   rateStr: string;
-  aiNote: string;
 };
 
 function StepInvestment({
@@ -256,12 +255,10 @@ function StepInvestment({
   onChange: (patch: Partial<InvestmentForm>) => void;
   onNext: () => void;
 }) {
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState("");
-  const [noteOpen, setNoteOpen] = useState(false);
-
-  const canFetchAI = data.startYear < data.endYear;
-  const valid = parse(data.initialDepositStr) > 0 && parse(data.rateStr) >= 0 && data.startYear < data.endYear;
+  const valid =
+    parse(data.initialDepositStr) > 0 &&
+    parse(data.rateStr) >= 0 &&
+    data.startYear < data.endYear;
 
   const endYearOptions = useMemo(
     () =>
@@ -273,26 +270,6 @@ function StepInvestment({
         .map((y) => ({ value: String(y), label: String(y) })),
     [data.startYear]
   );
-
-  async function fetchAIRate() {
-    if (!canFetchAI) return;
-    setAiLoading(true);
-    setAiError("");
-    setNoteOpen(false);
-    try {
-      const res = await fetch(
-        `/api/sp500-rate?startYear=${data.startYear}&endYear=${data.endYear}`
-      );
-      const json = await res.json();
-      if (!res.ok || !json.rate) throw new Error(json.error ?? "Unknown error");
-      onChange({ rateStr: String(json.rate), aiNote: json.note ?? "" });
-      setNoteOpen(true);
-    } catch {
-      setAiError("Could not fetch rate. Enter manually.");
-    } finally {
-      setAiLoading(false);
-    }
-  }
 
   return (
     <div className="grid gap-4">
@@ -310,8 +287,7 @@ function StepInvestment({
             value={data.startYear}
             onChange={(y) => {
               const newEnd = Math.max(data.endYear, y + 1);
-              onChange({ startYear: y, endYear: newEnd, aiNote: "" });
-              setNoteOpen(false);
+              onChange({ startYear: y, endYear: newEnd });
             }}
             options={START_YEAR_OPTIONS}
           />
@@ -319,74 +295,29 @@ function StepInvestment({
         <FieldRow label="End year">
           <YearSelect
             value={data.endYear}
-            onChange={(y) => { onChange({ endYear: y, aiNote: "" }); setNoteOpen(false); }}
+            onChange={(y) => onChange({ endYear: y })}
             options={endYearOptions}
           />
         </FieldRow>
       </div>
 
       <FieldRow label="Avg annual return (%)">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              max={60}
-              step={0.1}
-              value={data.rateStr}
-              onChange={(e) => { onChange({ rateStr: e.target.value, aiNote: "" }); setNoteOpen(false); }}
-              placeholder="7"
-              className="h-12 pr-7"
-            />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-              %
-            </span>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="h-12 w-12 shrink-0"
-            onClick={fetchAIRate}
-            disabled={!canFetchAI || aiLoading}
-            title="Fetch S&P 500 historical average with AI"
-          >
-            {aiLoading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Sparkles className="size-4" />
-            )}
-          </Button>
+        <div className="relative">
+          <Input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            max={100}
+            step={0.1}
+            value={data.rateStr}
+            onChange={(e) => onChange({ rateStr: e.target.value })}
+            placeholder="7"
+            className="h-12 pr-7"
+          />
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+            %
+          </span>
         </div>
-
-        {/* AI note popup */}
-        {data.aiNote && noteOpen && (
-          <div className="relative rounded-xl border bg-muted/40 px-3 py-2.5 text-xs leading-relaxed text-foreground">
-            <button
-              onClick={() => setNoteOpen(false)}
-              className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="size-3" />
-            </button>
-            <span className="mr-1 inline-flex items-center gap-1 font-medium">
-              <Sparkles className="size-3" /> AI
-            </span>
-            {data.aiNote}
-          </div>
-        )}
-        {data.aiNote && !noteOpen && (
-          <button
-            onClick={() => setNoteOpen(true)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-          >
-            <Info className="size-3" />
-            AI-sourced rate — tap to see details
-          </button>
-        )}
-        {aiError && (
-          <p className="text-xs text-destructive">{aiError}</p>
-        )}
       </FieldRow>
 
       <Button onClick={onNext} disabled={!valid} size="lg" className="h-12 w-full">
@@ -462,14 +393,13 @@ function Results({ result }: { result: ReturnType<typeof calculate> }) {
   const xInterval = totalPoints <= 11 ? 0 : Math.max(1, Math.floor(totalPoints / 10) - 1);
 
   const statCards = [
-    { label: "Final portfolio value", value: result.finalValue },
+    { label: "Final value", value: result.finalValue },
     { label: "Total invested", value: result.totalInvested },
     { label: "Investment growth", value: result.totalGrowth },
   ];
 
   return (
     <div className="mt-6 grid gap-6">
-      {/* key metrics */}
       <div className="grid grid-cols-2 gap-3">
         {statCards.map(({ label, value }) => (
           <Card key={label} className="rounded-2xl">
@@ -500,7 +430,6 @@ function Results({ result }: { result: ReturnType<typeof calculate> }) {
         </CardContent>
       </Card>
 
-      {/* stacked area: invested vs growth */}
       <Card className="rounded-2xl">
         <CardHeader className="pb-2 pt-4">
           <CardTitle className="text-sm font-semibold">Portfolio growth over time</CardTitle>
@@ -561,11 +490,10 @@ function Results({ result }: { result: ReturnType<typeof calculate> }) {
         </CardContent>
       </Card>
 
-      {/* year-over-year gain chart */}
       {yearlyData.length > 1 && (
         <Card className="rounded-2xl">
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm font-semibold">Annual portfolio gain</CardTitle>
+            <CardTitle className="text-sm font-semibold">Annual gain</CardTitle>
           </CardHeader>
           <CardContent className="px-2 pb-4">
             <ChartContainer config={gainChartConfig} className="h-40 w-full">
@@ -600,7 +528,6 @@ function Results({ result }: { result: ReturnType<typeof calculate> }) {
         </Card>
       )}
 
-      {/* year-by-year table */}
       <Card className="rounded-2xl">
         <CardHeader className="pb-2 pt-4">
           <CardTitle className="text-sm font-semibold">Year-by-year breakdown</CardTitle>
@@ -611,7 +538,7 @@ function Results({ result }: { result: ReturnType<typeof calculate> }) {
               <thead>
                 <tr className="border-b text-muted-foreground">
                   <th className="px-4 py-2 text-left font-medium">Year</th>
-                  <th className="px-4 py-2 text-right font-medium">Portfolio</th>
+                  <th className="px-4 py-2 text-right font-medium">Value</th>
                   <th className="px-4 py-2 text-right font-medium">Invested</th>
                   <th className="px-4 py-2 text-right font-medium">Growth</th>
                 </tr>
@@ -648,17 +575,16 @@ function Results({ result }: { result: ReturnType<typeof calculate> }) {
 
 // ─── main component ───────────────────────────────────────────────────────────
 
-export function SP500Calculator() {
+export function CompoundCalculator() {
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
   const [completedUpTo, setCompletedUpTo] = useState(0);
   const [saving, setSaving] = useState(false);
 
   const [investment, setInvestment] = useState<InvestmentForm>({
     initialDepositStr: "",
-    startYear: 2000,
-    endYear: CURRENT_YEAR,
+    startYear: CURRENT_YEAR,
+    endYear: CURRENT_YEAR + 10,
     rateStr: "7",
-    aiNote: "",
   });
 
   const [contribution, setContribution] = useState<ContributionForm>({
@@ -667,15 +593,19 @@ export function SP500Calculator() {
   });
 
   useEffect(() => {
-    loadSP500()
+    loadCompound()
       .then((saved) => {
         if (!saved) return;
-        setInvestment((prev) => ({ ...prev, ...saved.investment }));
-        setContribution((prev) => ({
-          ...prev,
-          ...saved.contribution,
-          frequency: saved.contribution.frequency as Frequency,
-        }));
+        setInvestment({
+          initialDepositStr: saved.initialDepositStr,
+          startYear: saved.startYear,
+          endYear: saved.endYear,
+          rateStr: saved.rateStr,
+        });
+        setContribution({
+          amountStr: saved.contributionStr,
+          frequency: saved.frequency as Frequency,
+        });
         setCompletedUpTo(saved.completedUpTo);
         if (saved.completedUpTo >= 1) setCurrentStep(Math.min(saved.completedUpTo, 2) as 1 | 2);
       })
@@ -683,31 +613,31 @@ export function SP500Calculator() {
   }, []);
 
   function persist(
-    nextInvestment: InvestmentForm,
-    nextContribution: ContributionForm,
-    nextCompleted: number
+    inv: InvestmentForm,
+    contrib: ContributionForm,
+    completed: number
   ) {
     setSaving(true);
-    saveSP500({
-      investment: nextInvestment,
-      contribution: nextContribution,
-      completedUpTo: nextCompleted,
+    saveCompound({
+      initialDepositStr: inv.initialDepositStr,
+      startYear: inv.startYear,
+      endYear: inv.endYear,
+      rateStr: inv.rateStr,
+      contributionStr: contrib.amountStr,
+      frequency: contrib.frequency,
+      completedUpTo: completed,
     }).finally(() => setSaving(false));
   }
 
   const result = useMemo(() => {
     if (completedUpTo < 2) return null;
     return calculate(
-      {
-        initialDeposit: parse(investment.initialDepositStr),
-        startYear: investment.startYear,
-        endYear: investment.endYear,
-        annualRate: parse(investment.rateStr),
-      },
-      {
-        amount: parse(contribution.amountStr),
-        frequency: contribution.frequency,
-      }
+      parse(investment.initialDepositStr),
+      investment.startYear,
+      investment.endYear,
+      parse(investment.rateStr),
+      parse(contribution.amountStr),
+      contribution.frequency
     );
   }, [completedUpTo, investment, contribution]);
 
@@ -731,7 +661,6 @@ export function SP500Calculator() {
       <StepIndicator current={currentStep} completed={completedUpTo} />
 
       <div className="mt-4 grid gap-3">
-        {/* Step 1 */}
         {completedUpTo >= 1 && currentStep !== 1 ? (
           <CompletedStep
             label="Investment"
@@ -760,7 +689,6 @@ export function SP500Calculator() {
           )
         )}
 
-        {/* Step 2 */}
         {currentStep > 1 && completedUpTo >= 2 && currentStep !== 2 ? (
           <CompletedStep
             label="Payments"
