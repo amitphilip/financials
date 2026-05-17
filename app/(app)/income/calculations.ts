@@ -14,7 +14,7 @@ const ACC_MAX_EARNINGS = 142_283;
 // KiwiSaver employer minimum
 const EMPLOYER_KIWI_RATE = 0.03;
 
-export const KIWI_RATES = [3, 4, 6, 8, 10] as const;
+export const KIWI_RATES = [3.5, 4, 6, 8, 10] as const;
 export type KiwiRate = (typeof KIWI_RATES)[number];
 
 export type IncomeResult = {
