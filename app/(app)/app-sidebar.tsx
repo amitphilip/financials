@@ -1,6 +1,6 @@
 "use client";
 
-import { Banknote, BrainCircuit, Building2, Calculator, KeyRound, LayoutDashboard, LogOut, PiggyBank, Settings, ShieldCheck, TrendingUp } from "lucide-react";
+import { Banknote, BrainCircuit, Building2, Calculator, KeyRound, LayoutDashboard, LogOut, Settings, ShieldCheck, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -86,18 +86,6 @@ export function AppSidebar({ isAdmin = false }: { isAdmin?: boolean }) {
                   <Link href="/advisor">
                     <BrainCircuit />
                     <span>Advisor</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === "/advisor/kiwisaver"}
-                  tooltip="KiwiSaver"
-                >
-                  <Link href="/advisor/kiwisaver">
-                    <PiggyBank />
-                    <span>KiwiSaver</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

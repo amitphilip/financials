@@ -1,4 +1,4 @@
-import { BrainCircuit, Building2, Calculator, ChevronRight, PiggyBank, TrendingUp } from "lucide-react";
+import { BrainCircuit, Building2, Calculator, ChevronRight, DollarSign, TrendingUp } from "lucide-react";
 import Link from "next/link";
 
 import { loadUserConfig } from "../user-config-actions";
@@ -64,6 +64,20 @@ export default async function HomePage() {
                   </div>
                 </div>
               </Link>
+
+              <Link href="/income" className="group">
+                <div className="flex h-full flex-col gap-3 rounded-2xl border bg-card p-4 shadow-md transition-colors group-hover:bg-muted/40">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-muted">
+                    <DollarSign className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">Income</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Calculate take-home pay and tax
+                    </p>
+                  </div>
+                </div>
+              </Link>
             </div>
           </section>
 
@@ -78,23 +92,9 @@ export default async function HomePage() {
                   <BrainCircuit className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold">Get advice</p>
+                  <p className="text-sm font-semibold">Financial Advisor</p>
                   <p className="text-xs text-muted-foreground">
                     AI analysis across your financial data
-                  </p>
-                </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-              </div>
-            </Link>
-            <Link href="/advisor/kiwisaver" className="group">
-              <div className="flex items-center gap-4 rounded-2xl border bg-card px-5 py-4 shadow-md transition-colors group-hover:bg-muted/40">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted">
-                  <PiggyBank className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold">KiwiSaver Projection</p>
-                  <p className="text-xs text-muted-foreground">
-                    High growth fund · AI-powered forecast
                   </p>
                 </div>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
