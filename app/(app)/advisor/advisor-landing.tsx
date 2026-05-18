@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, ChevronRight, Clock, PiggyBank, TrendingUp } from "lucide-react";
+import { Building2, ChevronRight, Clock, Layers, PiggyBank, TrendingUp } from "lucide-react";
 
 import { AnimatedList } from "@/components/ui/animated-list";
 import { TextAnimate } from "@/components/ui/text-animate";
@@ -34,6 +34,15 @@ const ADVISORS: Advisor[] = [
     icon: <TrendingUp className="h-5 w-5" />,
     href: "#",
     available: false,
+  },
+  {
+    id: "three-buckets",
+    title: "Three-Bucket Budgeting",
+    description:
+      "Split income on payday into tax, wealth, and living expenses buckets. Enter your income and set allocation percentages to see your per-period and annual breakdown.",
+    icon: <Layers className="h-5 w-5" />,
+    href: "/advisor/three-buckets",
+    available: true,
   },
   {
     id: "buy-vs-rent",
