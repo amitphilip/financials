@@ -71,8 +71,11 @@ export async function invitePartner(email: string) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
+  const { headers } = await import("next/headers");
+  const headersList = await headers();
+  const host = headersList.get("x-forwarded-host") ?? headersList.get("host") ?? "";
+  const proto = headersList.get("x-forwarded-proto") ?? "https";
+  const appUrl = `${proto}://${host}`;
 
   const client = await clerkClient();
   await client.invitations.createInvitation({
