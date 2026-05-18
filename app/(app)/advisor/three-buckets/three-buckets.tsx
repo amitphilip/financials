@@ -53,7 +53,6 @@ const FREQ_PERIODS: Record<string, number> = {
 };
 
 const BUCKET_COLORS = ["var(--chart-3)", "var(--chart-1)", "var(--chart-2)"] as const;
-const BUCKET_BG_CLASSES = ["bg-chart-3", "bg-chart-1", "bg-chart-2"] as const;
 
 const STEP_LABELS = ["Income", "Wealth"];
 
@@ -94,9 +93,58 @@ function computeMortgageRepayment(balance: number, termYears: number, annualRate
   const n = termYears * 12;
   const monthly = (balance * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
   const interest = balance * r;
-  const principal = monthly - interest;
-  return { monthly, principal, interest };
+  return { monthly, principal: monthly - interest, interest };
 }
+
+// ─── types ────────────────────────────────────────────────────────────────────
+
+type PersonIncome = {
+  grossStr: string;
+  kiwiRate: KiwiRate;
+  employmentType: "paye" | "self_employed";
+  taxPctStr: string;
+  confirmed: boolean;
+  included: boolean;
+};
+
+type IncomeForm = {
+  you: PersonIncome;
+  partner: PersonIncome;
+  frequency: string;
+};
+
+type WealthForm = {
+  mortgageBalanceStr: string;
+  mortgageTermStr: string;
+  mortgageRateStr: string;
+  investmentAmountStr: string;
+  investmentFrequency: string;
+};
+
+// ─── defaults ─────────────────────────────────────────────────────────────────
+
+const DEFAULT_PERSON: PersonIncome = {
+  grossStr: "",
+  kiwiRate: 3.5,
+  employmentType: "paye",
+  taxPctStr: "28",
+  confirmed: false,
+  included: true,
+};
+
+const DEFAULT_INCOME: IncomeForm = {
+  you: { ...DEFAULT_PERSON },
+  partner: { ...DEFAULT_PERSON, included: false },
+  frequency: "fortnightly",
+};
+
+const DEFAULT_WEALTH: WealthForm = {
+  mortgageBalanceStr: "",
+  mortgageTermStr: "",
+  mortgageRateStr: "",
+  investmentAmountStr: "",
+  investmentFrequency: "monthly",
+};
 
 // ─── shared UI ────────────────────────────────────────────────────────────────
 
@@ -112,88 +160,69 @@ function FieldRow({ label, hint, children }: { label: string; hint?: string; chi
   );
 }
 
-function CurrencyInput({
-  value,
-  onChange,
-  placeholder = "0",
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
+function CurrencyInput({ value, onChange, placeholder = "0" }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <div className="relative">
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-      <Input
-        type="number"
-        inputMode="decimal"
-        min={0}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="h-12 pl-7"
-      />
+      <Input type="number" inputMode="decimal" min={0} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="h-12 pl-7" />
     </div>
   );
 }
 
-function PercentInput({
-  value,
-  onChange,
-  placeholder = "0",
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
+function PercentInput({ value, onChange, placeholder = "0" }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <div className="relative">
-      <Input
-        type="number"
-        inputMode="decimal"
-        min={0}
-        max={100}
-        step={0.1}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="h-12 pr-7"
-      />
+      <Input type="number" inputMode="decimal" min={0} max={100} step={0.1} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="h-12 pr-7" />
       <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
     </div>
   );
 }
 
-const SearchSelect = memo(function SearchSelect({
-  value,
-  onChange,
-  options,
-  placeholder = "Select…",
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  placeholder?: string;
+const SearchSelect = memo(function SearchSelect({ value, onChange, options, placeholder = "Select…" }: {
+  value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; placeholder?: string;
 }) {
   return (
-    <Combobox
-      value={value}
-      onValueChange={(v) => {
-        if (v !== null) onChange(v as string);
-      }}
-    >
+    <Combobox value={value} onValueChange={(v) => { if (v !== null) onChange(v as string); }}>
       <ComboboxInput placeholder={placeholder} className="h-12 w-full" showTrigger showClear={false} />
       <ComboboxContent>
         <ComboboxEmpty>No results</ComboboxEmpty>
         <ComboboxList>
-          {options.map((o) => (
-            <ComboboxItem key={o.value} value={o.value}>{o.label}</ComboboxItem>
-          ))}
+          {options.map((o) => <ComboboxItem key={o.value} value={o.value}>{o.label}</ComboboxItem>)}
         </ComboboxList>
       </ComboboxContent>
     </Combobox>
   );
 });
+
+function EmploymentToggle({ value, onChange }: { value: "paye" | "self_employed"; onChange: (v: "paye" | "self_employed") => void }) {
+  return (
+    <div className="flex gap-2">
+      {[{ value: "paye" as const, label: "PAYE" }, { value: "self_employed" as const, label: "Self-employed" }].map((opt) => (
+        <button key={opt.value} type="button" onClick={() => onChange(opt.value)}
+          className={["h-10 flex-1 rounded-lg border px-3 text-sm font-medium transition-colors",
+            value === opt.value ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground",
+          ].join(" ")}>
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function KiwiRateSelector({ value, onChange }: { value: KiwiRate; onChange: (r: KiwiRate) => void }) {
+  return (
+    <div className="flex gap-2 flex-wrap">
+      {KIWI_RATES.map((r) => (
+        <button key={r} type="button" onClick={() => onChange(r)}
+          className={["h-10 min-w-14 rounded-lg border px-3 text-sm font-medium transition-colors",
+            value === r ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground",
+          ].join(" ")}>
+          {r}%
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ─── step indicator ───────────────────────────────────────────────────────────
 
@@ -207,21 +236,12 @@ function StepIndicator({ current, completed }: { current: number; completed: num
         return (
           <div key={step} className="flex items-center">
             <div className="flex flex-col items-center gap-1">
-              <div
-                className={[
-                  "flex size-8 items-center justify-center rounded-full text-xs font-semibold transition-colors",
-                  done
-                    ? "bg-primary text-primary-foreground"
-                    : active
-                    ? "border-2 border-primary text-primary"
-                    : "border-2 border-muted text-muted-foreground",
-                ].join(" ")}
-              >
+              <div className={["flex size-8 items-center justify-center rounded-full text-xs font-semibold transition-colors",
+                done ? "bg-primary text-primary-foreground" : active ? "border-2 border-primary text-primary" : "border-2 border-muted text-muted-foreground",
+              ].join(" ")}>
                 {done && step < current ? <Check className="size-4" /> : step}
               </div>
-              <span className={["text-xs", active ? "font-medium text-foreground" : "text-muted-foreground"].join(" ")}>
-                {label}
-              </span>
+              <span className={["text-xs", active ? "font-medium text-foreground" : "text-muted-foreground"].join(" ")}>{label}</span>
             </div>
             {i < STEP_LABELS.length - 1 && (
               <div className={["mb-5 h-px w-12 transition-colors", step < current ? "bg-primary" : "bg-muted"].join(" ")} />
@@ -252,87 +272,52 @@ function CompletedStep({ label, summary, onEdit }: { label: string; summary: str
   );
 }
 
-// ─── kiwisaver rate selector ──────────────────────────────────────────────────
+// ─── person income card ───────────────────────────────────────────────────────
 
-function KiwiRateSelector({ value, onChange }: { value: KiwiRate; onChange: (r: KiwiRate) => void }) {
-  return (
-    <div className="flex gap-2 flex-wrap">
-      {KIWI_RATES.map((r) => (
-        <button
-          key={r}
-          type="button"
-          onClick={() => onChange(r)}
-          className={[
-            "h-10 min-w-14 rounded-lg border px-3 text-sm font-medium transition-colors",
-            value === r
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground",
-          ].join(" ")}
-        >
-          {r}%
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ─── step 1: income ───────────────────────────────────────────────────────────
-
-type IncomeForm = {
-  grossStr: string;
-  kiwiRate: KiwiRate;
-  frequency: string;
-  employmentType: "paye" | "self_employed";
-  taxPctStr: string;
-};
-
-function StepIncome({
-  data,
-  onChange,
-  onNext,
-}: {
-  data: IncomeForm;
-  onChange: (patch: Partial<IncomeForm>) => void;
-  onNext: () => void;
+function PersonIncomeCard({ label, data, onChange, onConfirm, onEdit, onSkip, showSkip }: {
+  label: string;
+  data: PersonIncome;
+  onChange: (patch: Partial<PersonIncome>) => void;
+  onConfirm: () => void;
+  onEdit: () => void;
+  onSkip?: () => void;
+  showSkip?: boolean;
 }) {
-  const gross = parse(data.grossStr);
-  const valid = gross > 0 && data.frequency !== "";
+  if (data.confirmed) {
+    return (
+      <div className="flex items-center justify-between rounded-xl border bg-muted/20 px-4 py-3">
+        <div>
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className="text-sm font-medium tabular-nums">
+            $<HiddenNumber value={parse(data.grossStr)} /> gross
+            {data.employmentType === "paye" && ` · KiwiSaver ${data.kiwiRate}%`}
+            {data.employmentType === "self_employed" && ` · Tax ${data.taxPctStr}%`}
+          </p>
+        </div>
+        <Button variant="ghost" size="icon" onClick={onEdit} className="size-9 shrink-0">
+          <Pencil className="size-4" />
+        </Button>
+      </div>
+    );
+  }
 
-  // Live preview
-  const preview = useMemo(() => {
-    if (gross <= 0) return null;
-    if (data.employmentType === "paye") {
-      const r = calculateIncome(gross, data.kiwiRate);
-      return { tax: r.paye + r.acc, kiwi: r.kiwiEmployee, net: r.net };
-    }
-    const tax = Math.round(gross * parse(data.taxPctStr) / 100);
-    return { tax, kiwi: 0, net: gross - tax };
-  }, [gross, data.employmentType, data.kiwiRate, data.taxPctStr]);
+  if (!data.included) {
+    return (
+      <div className="flex items-center justify-between rounded-xl border bg-muted/20 px-4 py-3">
+        <p className="text-xs text-muted-foreground">{label} — not included</p>
+        <button type="button" onClick={() => onChange({ included: true })} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          Add
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="grid gap-4">
-      {/* Employment type toggle */}
+    <div className="rounded-xl border bg-background p-4 grid gap-4">
+      <p className="text-sm font-semibold">{label}</p>
+
       <FieldRow label="Employment type">
-        <div className="flex gap-2">
-          {[
-            { value: "paye", label: "PAYE employee" },
-            { value: "self_employed", label: "Self-employed" },
-          ].map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => onChange({ employmentType: opt.value as "paye" | "self_employed" })}
-              className={[
-                "h-10 flex-1 rounded-lg border px-3 text-sm font-medium transition-colors",
-                data.employmentType === opt.value
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground",
-              ].join(" ")}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        <EmploymentToggle value={data.employmentType} onChange={(v) => onChange({ employmentType: v })} />
       </FieldRow>
 
       <FieldRow label="Annual gross salary">
@@ -340,45 +325,118 @@ function StepIncome({
       </FieldRow>
 
       {data.employmentType === "paye" ? (
-        <FieldRow label="KiwiSaver contribution rate">
+        <FieldRow label="KiwiSaver rate">
           <KiwiRateSelector value={data.kiwiRate} onChange={(r) => onChange({ kiwiRate: r })} />
         </FieldRow>
       ) : (
-        <FieldRow
-          label="Tax provision"
-          hint="Set aside this % of gross for provisional tax, GST, and ACC."
-        >
+        <FieldRow label="Tax provision" hint="Set aside this % of gross for provisional tax, GST, and ACC.">
           <PercentInput value={data.taxPctStr} onChange={(v) => onChange({ taxPctStr: v })} placeholder="28" />
         </FieldRow>
       )}
 
-      <FieldRow label="Pay frequency">
-        <SearchSelect
-          value={data.frequency}
-          onChange={(v) => onChange({ frequency: v })}
-          options={FREQ_OPTIONS}
-          placeholder="Select frequency"
-        />
-      </FieldRow>
+      <div className="flex gap-2">
+        <Button onClick={onConfirm} disabled={parse(data.grossStr) <= 0} className="h-11 flex-1">
+          <Check className="size-4 mr-1" /> Confirm
+        </Button>
+        {showSkip && onSkip && (
+          <Button variant="ghost" onClick={onSkip} className="h-11 text-muted-foreground">Skip</Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
-      {/* Live preview */}
-      {preview && (
+// ─── step 1: income ───────────────────────────────────────────────────────────
+
+function StepIncome({ data, onChange, onNext }: {
+  data: IncomeForm;
+  onChange: (patch: Partial<IncomeForm>) => void;
+  onNext: () => void;
+}) {
+  const valid = data.you.confirmed && data.frequency !== "";
+
+  const householdPreview = useMemo(() => {
+    if (!data.you.confirmed) return null;
+    let totalGross = parse(data.you.grossStr);
+    let totalTax = 0;
+    let totalKiwi = 0;
+    let totalNet = 0;
+
+    function add(p: PersonIncome) {
+      const g = parse(p.grossStr);
+      if (!p.included || g <= 0) return;
+      if (p.employmentType === "paye") {
+        const r = calculateIncome(g, p.kiwiRate);
+        totalTax += r.paye + r.acc;
+        totalKiwi += r.kiwiEmployee;
+        totalNet += r.net;
+      } else {
+        const tax = Math.round(g * parse(p.taxPctStr) / 100);
+        totalTax += tax;
+        totalNet += g - tax;
+      }
+    }
+
+    add(data.you);
+    if (data.partner.confirmed) {
+      totalGross += parse(data.partner.grossStr);
+      add(data.partner);
+    }
+
+    return { totalGross, totalTax, totalKiwi, totalNet };
+  }, [data.you, data.partner]);
+
+  return (
+    <div className="grid gap-4">
+      <PersonIncomeCard
+        label="Your income"
+        data={data.you}
+        onChange={(patch) => onChange({ you: { ...data.you, ...patch } })}
+        onConfirm={() => onChange({ you: { ...data.you, confirmed: true } })}
+        onEdit={() => onChange({ you: { ...data.you, confirmed: false } })}
+      />
+
+      {data.you.confirmed && (
+        <PersonIncomeCard
+          label="Partner's income"
+          data={data.partner}
+          onChange={(patch) => onChange({ partner: { ...data.partner, ...patch } })}
+          onConfirm={() => onChange({ partner: { ...data.partner, confirmed: true } })}
+          onEdit={() => onChange({ partner: { ...data.partner, confirmed: false } })}
+          onSkip={() => onChange({ partner: { ...data.partner, included: false, confirmed: false } })}
+          showSkip={data.partner.included && !data.partner.confirmed}
+        />
+      )}
+
+      {data.you.confirmed && (
+        <FieldRow label="Household budget frequency">
+          <SearchSelect value={data.frequency} onChange={(v) => onChange({ frequency: v })} options={FREQ_OPTIONS} placeholder="Select frequency" />
+        </FieldRow>
+      )}
+
+      {householdPreview && (data.partner.confirmed || !data.partner.included) && (
         <div className="rounded-xl border bg-muted/30 px-3 py-3 grid gap-1.5">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Preview</p>
-          <div className="grid grid-cols-3 gap-2 text-xs">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            {data.partner.confirmed ? "Combined household" : "Your income"}
+          </p>
+          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <div>
+              <p className="text-muted-foreground">Gross (yr)</p>
+              <p className="font-semibold tabular-nums mt-0.5">$<HiddenNumber value={householdPreview.totalGross} /></p>
+            </div>
             <div>
               <p className="text-muted-foreground">Tax (yr)</p>
-              <p className="font-semibold tabular-nums mt-0.5">$<HiddenNumber value={preview.tax} /></p>
+              <p className="font-semibold tabular-nums mt-0.5">$<HiddenNumber value={householdPreview.totalTax} /></p>
             </div>
-            {data.employmentType === "paye" && (
+            {householdPreview.totalKiwi > 0 && (
               <div>
                 <p className="text-muted-foreground">KiwiSaver (yr)</p>
-                <p className="font-semibold tabular-nums mt-0.5">$<HiddenNumber value={preview.kiwi} /></p>
+                <p className="font-semibold tabular-nums mt-0.5">$<HiddenNumber value={householdPreview.totalKiwi} /></p>
               </div>
             )}
             <div>
               <p className="text-muted-foreground">Take-home (yr)</p>
-              <p className="font-semibold tabular-nums mt-0.5">$<HiddenNumber value={preview.net} /></p>
+              <p className="font-semibold tabular-nums mt-0.5">$<HiddenNumber value={householdPreview.totalNet} /></p>
             </div>
           </div>
         </div>
@@ -393,22 +451,7 @@ function StepIncome({
 
 // ─── step 2: wealth commitments ───────────────────────────────────────────────
 
-type WealthForm = {
-  mortgageBalanceStr: string;
-  mortgageTermStr: string;
-  mortgageRateStr: string;
-  investmentAmountStr: string;
-  investmentFrequency: string;
-};
-
-function StepWealth({
-  data,
-  onChange,
-  onDone,
-  onBack,
-  kiwiAnnual,
-  frequency,
-}: {
+function StepWealth({ data, onChange, onDone, onBack, kiwiAnnual, frequency }: {
   data: WealthForm;
   onChange: (patch: Partial<WealthForm>) => void;
   onDone: () => void;
@@ -416,7 +459,7 @@ function StepWealth({
   kiwiAnnual: number;
   frequency: string;
 }) {
-  const periods = FREQ_PERIODS[frequency] ?? 12;
+  const periods = FREQ_PERIODS[frequency] ?? 26;
   const freqStr = freqLabel(frequency);
 
   const mortgage = useMemo(() => {
@@ -429,7 +472,6 @@ function StepWealth({
 
   return (
     <div className="grid gap-5">
-      {/* KiwiSaver read-only */}
       {kiwiAnnual > 0 && (
         <div className="rounded-xl border bg-muted/20 px-3 py-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">KiwiSaver (from income)</p>
@@ -439,27 +481,15 @@ function StepWealth({
         </div>
       )}
 
-      {/* Mortgage */}
       <div className="grid gap-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mortgage</p>
-
         <FieldRow label="Remaining balance">
           <CurrencyInput value={data.mortgageBalanceStr} onChange={(v) => onChange({ mortgageBalanceStr: v })} placeholder="450,000" />
         </FieldRow>
-
         <div className="grid grid-cols-2 gap-3">
-          <FieldRow label="Remaining term (years)">
+          <FieldRow label="Remaining term">
             <div className="relative">
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={40}
-                value={data.mortgageTermStr}
-                onChange={(e) => onChange({ mortgageTermStr: e.target.value })}
-                placeholder="25"
-                className="h-12 pr-10"
-              />
+              <Input type="number" inputMode="numeric" min={1} max={40} value={data.mortgageTermStr} onChange={(e) => onChange({ mortgageTermStr: e.target.value })} placeholder="25" className="h-12 pr-10" />
               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">yrs</span>
             </div>
           </FieldRow>
@@ -467,41 +497,33 @@ function StepWealth({
             <PercentInput value={data.mortgageRateStr} onChange={(v) => onChange({ mortgageRateStr: v })} placeholder="6.5" />
           </FieldRow>
         </div>
-
         {mortgage && (
-          <div className="rounded-xl border bg-muted/20 px-3 py-2.5 text-xs grid gap-1">
+          <div className="rounded-xl border bg-muted/20 px-3 py-2.5 grid gap-1 text-xs">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Repayment per {freqStr}</span>
               <span className="font-semibold tabular-nums">$<HiddenNumber value={Math.round(mortgage.monthly * 12 / periods)} /></span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Principal (wealth)</span>
+              <span className="text-muted-foreground">Principal (wealth building)</span>
               <span className="tabular-nums text-green-600">$<HiddenNumber value={Math.round(mortgage.principal * 12 / periods)} /></span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Interest (cost)</span>
+              <span className="text-muted-foreground">Interest (cost of borrowing)</span>
               <span className="tabular-nums">$<HiddenNumber value={Math.round(mortgage.interest * 12 / periods)} /></span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Other investments */}
       <div className="grid gap-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Additional investments (optional)</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Additional investments</p>
         <p className="text-xs text-muted-foreground -mt-1">Shares, index funds, savings accounts, extra mortgage payments, or any other regular wealth contribution.</p>
-
         <div className="grid grid-cols-2 gap-3">
           <FieldRow label="Amount">
             <CurrencyInput value={data.investmentAmountStr} onChange={(v) => onChange({ investmentAmountStr: v })} placeholder="200" />
           </FieldRow>
           <FieldRow label="Frequency">
-            <SearchSelect
-              value={data.investmentFrequency}
-              onChange={(v) => onChange({ investmentFrequency: v })}
-              options={INV_FREQ_OPTIONS}
-              placeholder="Frequency"
-            />
+            <SearchSelect value={data.investmentFrequency} onChange={(v) => onChange({ investmentFrequency: v })} options={INV_FREQ_OPTIONS} placeholder="Frequency" />
           </FieldRow>
         </div>
       </div>
@@ -518,25 +540,21 @@ function StepWealth({
 
 type BucketResult = {
   gross: number;
-  // tax bucket
+  hasPartner: boolean;
   annualPaye: number;
   annualAcc: number;
   annualTax: number;
-  // wealth bucket
   annualKiwi: number;
   annualMortgage: number;
   mortgagePrincipalAnnual: number;
   mortgageInterestAnnual: number;
   annualInvestments: number;
   annualWealth: number;
-  // living
   annualNet: number;
   annualLiving: number;
-  // per period
   perPeriodTax: number;
   perPeriodWealth: number;
   perPeriodLiving: number;
-  // percentages of gross
   taxPct: number;
   wealthPct: number;
   livingPct: number;
@@ -544,41 +562,42 @@ type BucketResult = {
   frequency: string;
 };
 
-function computeAll(income: IncomeForm, wealth: WealthForm): BucketResult | null {
-  const gross = parse(income.grossStr);
-  if (gross <= 0) return null;
-
-  const periods = FREQ_PERIODS[income.frequency] ?? 12;
-
-  let annualPaye = 0;
-  let annualAcc = 0;
-  let annualKiwi = 0;
-  let annualNet = 0;
-
-  if (income.employmentType === "paye") {
-    const r = calculateIncome(gross, income.kiwiRate);
-    annualPaye = r.paye;
-    annualAcc = r.acc;
-    annualKiwi = r.kiwiEmployee;
-    annualNet = r.net;
-  } else {
-    annualPaye = Math.round(gross * parse(income.taxPctStr) / 100);
-    annualNet = gross - annualPaye;
+function computePerson(p: PersonIncome): { paye: number; acc: number; kiwi: number; net: number } {
+  const gross = parse(p.grossStr);
+  if (!p.included || gross <= 0) return { paye: 0, acc: 0, kiwi: 0, net: 0 };
+  if (p.employmentType === "paye") {
+    const r = calculateIncome(gross, p.kiwiRate);
+    return { paye: r.paye, acc: r.acc, kiwi: r.kiwiEmployee, net: r.net };
   }
+  const tax = Math.round(gross * parse(p.taxPctStr) / 100);
+  return { paye: tax, acc: 0, kiwi: 0, net: gross - tax };
+}
 
+function computeAll(income: IncomeForm, wealth: WealthForm): BucketResult | null {
+  const youGross = parse(income.you.grossStr);
+  if (youGross <= 0) return null;
+
+  const periods = FREQ_PERIODS[income.frequency] ?? 26;
+
+  const you = computePerson(income.you);
+  const partner = computePerson(income.partner);
+
+  const gross = youGross + (income.partner.included ? parse(income.partner.grossStr) : 0);
+  const annualPaye = you.paye + partner.paye;
+  const annualAcc = you.acc + partner.acc;
   const annualTax = annualPaye + annualAcc;
+  const annualKiwi = you.kiwi + partner.kiwi;
+  const annualNet = you.net + partner.net;
 
-  const mortgageBalance = parse(wealth.mortgageBalanceStr);
-  const mortgageTerm = parse(wealth.mortgageTermStr);
-  const mortgageRate = parse(wealth.mortgageRateStr);
-  const { monthly, principal, interest } = computeMortgageRepayment(mortgageBalance, mortgageTerm, mortgageRate);
+  const { monthly, principal, interest } = computeMortgageRepayment(
+    parse(wealth.mortgageBalanceStr),
+    parse(wealth.mortgageTermStr),
+    parse(wealth.mortgageRateStr),
+  );
   const annualMortgage = monthly * 12;
-  const mortgagePrincipalAnnual = principal * 12;
-  const mortgageInterestAnnual = interest * 12;
 
-  const invAmount = parse(wealth.investmentAmountStr);
   const invPeriods = FREQ_PERIODS[wealth.investmentFrequency] ?? 12;
-  const annualInvestments = invAmount * invPeriods;
+  const annualInvestments = parse(wealth.investmentAmountStr) * invPeriods;
 
   const annualWealth = annualKiwi + annualMortgage + annualInvestments;
   const annualLiving = annualNet - annualMortgage - annualInvestments;
@@ -587,8 +606,11 @@ function computeAll(income: IncomeForm, wealth: WealthForm): BucketResult | null
 
   return {
     gross,
+    hasPartner: income.partner.included && income.partner.confirmed,
     annualPaye, annualAcc, annualTax,
-    annualKiwi, annualMortgage, mortgagePrincipalAnnual, mortgageInterestAnnual,
+    annualKiwi, annualMortgage,
+    mortgagePrincipalAnnual: principal * 12,
+    mortgageInterestAnnual: interest * 12,
     annualInvestments, annualWealth,
     annualNet, annualLiving,
     perPeriodTax: annualTax / periods,
@@ -609,14 +631,13 @@ const bucketChartConfig = { amount: { label: "Annual" } } satisfies ChartConfig;
 function Results({ result }: { result: BucketResult }) {
   const [surplusOpen, setSurplusOpen] = useState(false);
   const freqStr = freqLabel(result.frequency);
+  const periods = FREQ_PERIODS[result.frequency] ?? 26;
 
   const chartData = [
     { name: "Tax", amount: Math.round(result.annualTax) },
     { name: "Wealth", amount: Math.round(result.annualWealth) },
     { name: "Living", amount: Math.round(Math.max(0, result.annualLiving)) },
   ];
-
-  const periods = FREQ_PERIODS[result.frequency] ?? 12;
 
   return (
     <div className="mt-6 grid gap-4">
@@ -628,25 +649,16 @@ function Results({ result }: { result: BucketResult }) {
           {result.livingPct > 0 && <div style={{ flex: 1 }} className="bg-chart-2" />}
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-sm bg-chart-3" />Tax {result.taxPct}%
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-sm bg-chart-1" />Wealth {result.wealthPct}%
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-sm bg-chart-2" />Living {result.livingPct}%
-          </span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-sm bg-chart-3" />Tax {result.taxPct}%</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-sm bg-chart-1" />Wealth {result.wealthPct}%</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-sm bg-chart-2" />Living {result.livingPct}%</span>
         </div>
       </div>
 
-      {/* Living negative warning */}
       {result.isLivingNegative && (
         <div className="flex items-start gap-2 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-          <p className="text-xs text-muted-foreground">
-            Wealth commitments exceed take-home income. Reduce mortgage or investment contributions, or increase income.
-          </p>
+          <p className="text-xs text-muted-foreground">Wealth commitments exceed take-home income. Reduce mortgage or investment contributions, or increase income.</p>
         </div>
       )}
 
@@ -655,10 +667,10 @@ function Results({ result }: { result: BucketResult }) {
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: BUCKET_COLORS[0] }} />
+              <span className="inline-block h-3 w-3 rounded-sm bg-chart-3" />
               <p className="text-sm font-semibold">Tax bucket</p>
             </div>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{result.taxPct}% of gross</span>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{result.taxPct}% of gross</span>
           </div>
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
@@ -672,7 +684,7 @@ function Results({ result }: { result: BucketResult }) {
           </div>
           <div className="rounded-xl border bg-muted/20 px-3 py-2 grid gap-1 text-xs">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">PAYE income tax</span>
+              <span className="text-muted-foreground">PAYE income tax{result.hasPartner && " (combined)"}</span>
               <span className="tabular-nums">$<HiddenNumber value={Math.round(result.annualPaye)} /></span>
             </div>
             {result.annualAcc > 0 && (
@@ -690,10 +702,10 @@ function Results({ result }: { result: BucketResult }) {
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: BUCKET_COLORS[1] }} />
+              <span className="inline-block h-3 w-3 rounded-sm bg-chart-1" />
               <p className="text-sm font-semibold">Wealth bucket</p>
             </div>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{result.wealthPct}% of gross</span>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{result.wealthPct}% of gross</span>
           </div>
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
@@ -708,7 +720,7 @@ function Results({ result }: { result: BucketResult }) {
           <div className="rounded-xl border bg-muted/20 px-3 py-2 grid gap-1 text-xs">
             {result.annualKiwi > 0 && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">KiwiSaver (employee)</span>
+                <span className="text-muted-foreground">KiwiSaver{result.hasPartner && " (combined)"}</span>
                 <span className="tabular-nums text-green-600">$<HiddenNumber value={Math.round(result.annualKiwi)} /></span>
               </div>
             )}
@@ -738,15 +750,15 @@ function Results({ result }: { result: BucketResult }) {
         </CardContent>
       </Card>
 
-      {/* Living expenses bucket */}
+      {/* Living bucket */}
       <Card className="rounded-2xl shadow-md">
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: BUCKET_COLORS[2] }} />
+              <span className="inline-block h-3 w-3 rounded-sm bg-chart-2" />
               <p className="text-sm font-semibold">Living expenses bucket</p>
             </div>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{result.livingPct}% of gross</span>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{result.livingPct}% of gross</span>
           </div>
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
@@ -764,7 +776,7 @@ function Results({ result }: { result: BucketResult }) {
           </div>
           <div className="rounded-xl border bg-muted/20 px-3 py-2 grid gap-1 text-xs">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Take-home after tax &amp; KiwiSaver</span>
+              <span className="text-muted-foreground">Take-home{result.hasPartner && " (combined)"}</span>
               <span className="tabular-nums">$<HiddenNumber value={Math.round(result.annualNet)} /></span>
             </div>
             {result.annualMortgage > 0 && (
@@ -783,12 +795,12 @@ function Results({ result }: { result: BucketResult }) {
         </CardContent>
       </Card>
 
-      {/* Annual chart */}
+      {/* Chart */}
       <Card className="rounded-2xl shadow-md">
         <CardHeader className="pb-2 pt-4">
           <CardTitle className="text-sm font-semibold">Annual allocation</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Gross: $<HiddenNumber value={Math.round(result.gross)} /> / year
+            {result.hasPartner ? "Combined household gross" : "Gross"}: $<HiddenNumber value={Math.round(result.gross)} /> / year
           </p>
         </CardHeader>
         <CardContent className="px-2 pb-4">
@@ -829,7 +841,7 @@ function Results({ result }: { result: BucketResult }) {
         )}
       </Card>
 
-      {/* Buffer sub-bucket */}
+      {/* Buffer note */}
       <Card className="rounded-2xl">
         <CardContent className="p-4">
           <p className="text-xs font-semibold">Buffer sub-bucket</p>
@@ -844,22 +856,6 @@ function Results({ result }: { result: BucketResult }) {
 
 // ─── main component ───────────────────────────────────────────────────────────
 
-const DEFAULT_INCOME: IncomeForm = {
-  grossStr: "",
-  kiwiRate: 3.5,
-  frequency: "fortnightly",
-  employmentType: "paye",
-  taxPctStr: "28",
-};
-
-const DEFAULT_WEALTH: WealthForm = {
-  mortgageBalanceStr: "",
-  mortgageTermStr: "",
-  mortgageRateStr: "",
-  investmentAmountStr: "",
-  investmentFrequency: "monthly",
-};
-
 export function ThreeBuckets() {
   const [step, setStep] = useState<1 | 2>(1);
   const [completedUpTo, setCompletedUpTo] = useState(0);
@@ -870,11 +866,23 @@ export function ThreeBuckets() {
     loadThreeBuckets().then((saved) => {
       if (!saved) return;
       setIncome({
-        grossStr: saved.grossStr,
-        kiwiRate: (saved.kiwiRate as KiwiRate) ?? 3.5,
+        you: {
+          grossStr: saved.grossStr,
+          kiwiRate: (saved.kiwiRate as KiwiRate) ?? 3.5,
+          employmentType: (saved.employmentType as "paye" | "self_employed") ?? "paye",
+          taxPctStr: saved.taxPctStr ?? "28",
+          confirmed: true,
+          included: true,
+        },
+        partner: {
+          grossStr: saved.partnerGrossStr ?? "",
+          kiwiRate: (saved.partnerKiwiRate as KiwiRate) ?? 3.5,
+          employmentType: (saved.partnerEmploymentType as "paye" | "self_employed") ?? "paye",
+          taxPctStr: saved.partnerTaxPctStr ?? "28",
+          confirmed: saved.partnerConfirmed ?? false,
+          included: saved.partnerIncluded ?? false,
+        },
         frequency: saved.frequency,
-        employmentType: (saved.employmentType as "paye" | "self_employed") ?? "paye",
-        taxPctStr: saved.taxPctStr ?? "28",
       });
       setWealth({
         mortgageBalanceStr: saved.mortgageBalanceStr ?? "",
@@ -890,11 +898,17 @@ export function ThreeBuckets() {
 
   function persist(completed: number, i = income, w = wealth) {
     saveThreeBuckets({
-      grossStr: i.grossStr,
-      kiwiRate: i.kiwiRate,
+      grossStr: i.you.grossStr,
+      kiwiRate: i.you.kiwiRate,
+      employmentType: i.you.employmentType,
+      taxPctStr: i.you.taxPctStr,
+      partnerIncluded: i.partner.included,
+      partnerConfirmed: i.partner.confirmed,
+      partnerGrossStr: i.partner.grossStr,
+      partnerKiwiRate: i.partner.kiwiRate,
+      partnerEmploymentType: i.partner.employmentType,
+      partnerTaxPctStr: i.partner.taxPctStr,
       frequency: i.frequency,
-      employmentType: i.employmentType,
-      taxPctStr: i.taxPctStr,
       mortgageBalanceStr: w.mortgageBalanceStr,
       mortgageTermStr: w.mortgageTermStr,
       mortgageRateStr: w.mortgageRateStr,
@@ -904,34 +918,31 @@ export function ThreeBuckets() {
     });
   }
 
-  function handleIncomeDone() {
-    const next = Math.max(completedUpTo, 1);
-    setCompletedUpTo(next);
-    setStep(2);
-    persist(next);
-  }
-
-  function handleWealthDone() {
-    const next = Math.max(completedUpTo, 2);
-    setCompletedUpTo(next);
-    persist(next);
-  }
-
   const kiwiAnnual = useMemo(() => {
-    if (income.employmentType !== "paye") return 0;
-    const gross = parse(income.grossStr);
-    if (gross <= 0) return 0;
-    return calculateIncome(gross, income.kiwiRate).kiwiEmployee;
-  }, [income.grossStr, income.kiwiRate, income.employmentType]);
+    let kiwi = 0;
+    const youGross = parse(income.you.grossStr);
+    if (income.you.employmentType === "paye" && youGross > 0) {
+      kiwi += calculateIncome(youGross, income.you.kiwiRate).kiwiEmployee;
+    }
+    const partnerGross = parse(income.partner.grossStr);
+    if (income.partner.included && income.partner.confirmed && income.partner.employmentType === "paye" && partnerGross > 0) {
+      kiwi += calculateIncome(partnerGross, income.partner.kiwiRate).kiwiEmployee;
+    }
+    return kiwi;
+  }, [income]);
 
   const result = useMemo(() => {
     if (completedUpTo < 2) return null;
     return computeAll(income, wealth);
   }, [income, wealth, completedUpTo]);
 
+  const youGross = parse(income.you.grossStr);
+  const partnerGross = income.partner.confirmed ? parse(income.partner.grossStr) : 0;
   const incomeSummary =
     completedUpTo >= 1
-      ? `$${fmt(parse(income.grossStr))} gross · ${income.kiwiRate}% KiwiSaver · ${income.frequency}`
+      ? partnerGross > 0
+        ? `$${fmt(youGross)} + $${fmt(partnerGross)} gross · ${income.frequency}`
+        : `$${fmt(youGross)} gross · ${income.you.kiwiRate}% KiwiSaver · ${income.frequency}`
       : "";
 
   const wealthSummary =
@@ -939,9 +950,7 @@ export function ThreeBuckets() {
       ? [
           parse(wealth.mortgageBalanceStr) > 0 && `mortgage $${fmt(parse(wealth.mortgageBalanceStr))}`,
           parse(wealth.investmentAmountStr) > 0 && `+$${fmt(parse(wealth.investmentAmountStr))} investments`,
-        ]
-          .filter(Boolean)
-          .join(" · ") || "No commitments entered"
+        ].filter(Boolean).join(" · ") || "No commitments entered"
       : "";
 
   return (
@@ -949,27 +958,30 @@ export function ThreeBuckets() {
       <StepIndicator current={step} completed={completedUpTo} />
 
       <div className="mt-4 grid gap-3">
-        {/* Step 1 */}
         {step === 1 ? (
           <Card className="rounded-2xl shadow-md">
             <CardHeader className="pb-2 pt-4">
-              <CardTitle className="text-sm font-semibold">Your income</CardTitle>
+              <CardTitle className="text-sm font-semibold">Household income</CardTitle>
             </CardHeader>
             <CardContent>
               <StepIncome
                 data={income}
                 onChange={(patch) => setIncome((p) => ({ ...p, ...patch }))}
-                onNext={handleIncomeDone}
+                onNext={() => {
+                  const next = Math.max(completedUpTo, 1);
+                  setCompletedUpTo(next);
+                  setStep(2);
+                  persist(next);
+                }}
               />
             </CardContent>
           </Card>
         ) : (
           completedUpTo >= 1 && (
-            <CompletedStep label="Income" summary={incomeSummary} onEdit={() => setStep(1)} />
+            <CompletedStep label="Household income" summary={incomeSummary} onEdit={() => setStep(1)} />
           )
         )}
 
-        {/* Step 2 */}
         {step === 2 && completedUpTo >= 1 ? (
           <Card className="rounded-2xl shadow-md">
             <CardHeader className="pb-2 pt-4">
@@ -979,7 +991,11 @@ export function ThreeBuckets() {
               <StepWealth
                 data={wealth}
                 onChange={(patch) => setWealth((p) => ({ ...p, ...patch }))}
-                onDone={handleWealthDone}
+                onDone={() => {
+                  const next = Math.max(completedUpTo, 2);
+                  setCompletedUpTo(next);
+                  persist(next);
+                }}
                 onBack={() => setStep(1)}
                 kiwiAnnual={kiwiAnnual}
                 frequency={income.frequency}
@@ -987,8 +1003,7 @@ export function ThreeBuckets() {
             </CardContent>
           </Card>
         ) : (
-          step > 2 &&
-          completedUpTo >= 2 && (
+          step > 2 && completedUpTo >= 2 && (
             <CompletedStep label="Wealth commitments" summary={wealthSummary} onEdit={() => setStep(2)} />
           )
         )}

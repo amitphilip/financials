@@ -5,11 +5,21 @@ import { decrypt, encrypt } from "@/lib/encrypt";
 import clientPromise from "@/lib/mongodb";
 
 export type SavedThreeBuckets = {
+  // You
   grossStr: string;
   kiwiRate: number;
-  frequency: string;
   employmentType: string;
   taxPctStr: string;
+  // Partner (optional)
+  partnerIncluded: boolean;
+  partnerConfirmed: boolean;
+  partnerGrossStr: string;
+  partnerKiwiRate: number;
+  partnerEmploymentType: string;
+  partnerTaxPctStr: string;
+  // Shared
+  frequency: string;
+  // Wealth
   mortgageBalanceStr: string;
   mortgageTermStr: string;
   mortgageRateStr: string;
