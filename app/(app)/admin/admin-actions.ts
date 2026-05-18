@@ -86,13 +86,17 @@ export async function listPendingInvitations(): Promise<InvitationRow[]> {
 export async function adminInviteUser(email: string) {
   await requireAdmin();
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
+  const { headers } = await import("next/headers");
+  const headersList = await headers();
+  const host = headersList.get("x-forwarded-host") ?? headersList.get("host") ?? "";
+  const proto = headersList.get("x-forwarded-proto") ?? "https";
+  const appUrl = `${proto}://${host}`;
+
   const client = await clerkClient();
   await client.invitations.createInvitation({
     emailAddress: email,
     redirectUrl: `${appUrl}/`,
     ignoreExisting: true,
-    // No partnerOf — this creates a primary account
   });
 }
 
