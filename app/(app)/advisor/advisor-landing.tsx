@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, ChevronRight, Clock, Layers, PiggyBank, TrendingUp } from "lucide-react";
+import { Building2, ChevronRight, Clock, Layers, PiggyBank, ReceiptText, TrendingUp } from "lucide-react";
 
 import { AnimatedList } from "@/components/ui/animated-list";
 import { TextAnimate } from "@/components/ui/text-animate";
@@ -34,6 +34,15 @@ const ADVISORS: Advisor[] = [
     icon: <TrendingUp className="h-5 w-5" />,
     href: "#",
     available: false,
+  },
+  {
+    id: "expense-tracking",
+    title: "Expense Tracking",
+    description:
+      "Upload CSV or XLSX bank statements. Claude parses and categorises every transaction — mortgage, groceries, dining, transport and more — then shows you weekly, monthly, and yearly spend broken down by category.",
+    icon: <ReceiptText className="h-5 w-5" />,
+    href: "/advisor/expense-tracking",
+    available: true,
   },
   {
     id: "three-buckets",
