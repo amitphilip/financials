@@ -23,7 +23,7 @@ async function col() {
  * If the signed-in user is a partner (publicMetadata.partnerOf is set),
  * their data lives under the primary user's document.
  */
-async function resolveEffectiveUserId(): Promise<{
+export async function resolveEffectiveUserId(): Promise<{
   userId: string;
   effectiveUserId: string;
 } | null> {

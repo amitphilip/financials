@@ -1,8 +1,8 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
 import { decrypt, encrypt } from "@/lib/encrypt";
 import clientPromise from "@/lib/mongodb";
+import { resolveEffectiveUserId } from "@/app/user-config-actions";
 
 export type SavedKiwisaver = {
   balanceStr: string;
@@ -22,26 +22,26 @@ async function collection() {
 }
 
 export async function saveKiwisaver(data: SavedKiwisaver) {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
+  const ids = await resolveEffectiveUserId();
+  if (!ids) throw new Error("Unauthorized");
 
-  const payload = encrypt(JSON.stringify(data), userId);
+  const payload = encrypt(JSON.stringify(data), ids.effectiveUserId);
   const col = await collection();
 
   await col.updateOne(
-    { userId },
-    { $set: { userId, payload, updatedAt: new Date() } },
+    { userId: ids.effectiveUserId },
+    { $set: { userId: ids.effectiveUserId, payload, updatedAt: new Date() } },
     { upsert: true }
   );
 }
 
 export async function loadKiwisaver(): Promise<SavedKiwisaver | null> {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
+  const ids = await resolveEffectiveUserId();
+  if (!ids) throw new Error("Unauthorized");
 
   const col = await collection();
-  const doc = await col.findOne({ userId });
+  const doc = await col.findOne({ userId: ids.effectiveUserId });
 
   if (!doc?.payload) return null;
-  return JSON.parse(decrypt(doc.payload as string, userId)) as SavedKiwisaver;
+  return JSON.parse(decrypt(doc.payload as string, ids.effectiveUserId)) as SavedKiwisaver;
 }
