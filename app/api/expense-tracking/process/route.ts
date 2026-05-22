@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { auth } from "@clerk/nextjs/server";
+
+export const maxDuration = 300;
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -77,75 +79,120 @@ Full response format (JSON only):
 export async function POST(request: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  try {
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
-
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    }
-
-    const fileName = file.name;
-    const isXlsx = /\.xlsx?$/i.test(fileName);
-    let csvContent: string;
-
-    if (isXlsx) {
-      const XLSX = await import("xlsx");
-      const arrayBuffer = await file.arrayBuffer();
-      const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: "array" });
-      const sheetName = workbook.SheetNames[0];
-      csvContent = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
-    } else {
-      csvContent = await file.text();
-    }
-
-    // Parse and categorise with Claude
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8096,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: PARSE_PROMPT },
-            { type: "text", text: `\n\nBank statement CSV:\n\n${csvContent}` },
-          ],
-        },
-      ],
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
     });
-
-    const textBlock = response.content.find((c) => c.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      throw new Error("No text response from Claude");
-    }
-
-    const raw = textBlock.text
-      .trim()
-      .replace(/^```json\s*/i, "")
-      .replace(/\s*```$/i, "");
-
-    const parsed = JSON.parse(raw) as {
-      transactions: RawTransaction[];
-      dateRange: { from: string; to: string };
-      accountInfo: string;
-    };
-
-    const result: ProcessedFile = {
-      fileId: crypto.randomUUID(),
-      fileName,
-      transactions: parsed.transactions ?? [],
-      dateFrom: parsed.dateRange?.from ?? "",
-      dateTo: parsed.dateRange?.to ?? "",
-      rowCount: (parsed.transactions ?? []).length,
-      accountInfo: parsed.accountInfo ?? "",
-    };
-
-    return NextResponse.json(result);
-  } catch (error) {
-    console.error("Expense tracking process error:", error);
-    return NextResponse.json({ error: "Failed to process file" }, { status: 500 });
   }
+
+  const encoder = new TextEncoder();
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+
+  const send = (data: object) =>
+    writer.write(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+
+  // Process async — the SSE stream keeps the connection alive
+  (async () => {
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    try {
+      const formData = await request.formData();
+      const file = formData.get("file") as File | null;
+
+      if (!file) {
+        await send({ error: "No file provided" });
+        return;
+      }
+
+      await send({ stage: "Reading file…" });
+
+      const fileName = file.name;
+      const isXlsx = /\.xlsx?$/i.test(fileName);
+      let csvContent: string;
+
+      if (isXlsx) {
+        const XLSX = await import("xlsx");
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        csvContent = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+      } else {
+        csvContent = await file.text();
+      }
+
+      await send({ stage: "Analysing transactions…" });
+
+      // Heartbeat every 5s to keep the connection alive during Claude processing
+      heartbeat = setInterval(() => send({ heartbeat: true }), 5000);
+
+      const stream = client.messages.stream({
+        model: "claude-sonnet-4-6",
+        max_tokens: 32000,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: PARSE_PROMPT },
+              { type: "text", text: `\n\nBank statement CSV:\n\n${csvContent}` },
+            ],
+          },
+        ],
+      });
+
+      const response = await stream.finalMessage();
+      clearInterval(heartbeat);
+      heartbeat = undefined;
+
+      if (response.stop_reason === "max_tokens") {
+        throw new Error(
+          "Bank statement is too large to process in one pass. Try splitting it into smaller date ranges."
+        );
+      }
+
+      const textBlock = response.content.find((c) => c.type === "text");
+      if (!textBlock || textBlock.type !== "text") {
+        throw new Error("No text response from Claude");
+      }
+
+      await send({ stage: "Categorising spend…" });
+
+      const raw = textBlock.text
+        .trim()
+        .replace(/^```json\s*/i, "")
+        .replace(/\s*```$/i, "");
+
+      const parsed = JSON.parse(raw) as {
+        transactions: RawTransaction[];
+        dateRange: { from: string; to: string };
+        accountInfo: string;
+      };
+
+      const result: ProcessedFile = {
+        fileId: crypto.randomUUID(),
+        fileName,
+        transactions: parsed.transactions ?? [],
+        dateFrom: parsed.dateRange?.from ?? "",
+        dateTo: parsed.dateRange?.to ?? "",
+        rowCount: (parsed.transactions ?? []).length,
+        accountInfo: parsed.accountInfo ?? "",
+      };
+
+      await send({ done: true, result });
+    } catch (error) {
+      if (heartbeat) clearInterval(heartbeat);
+      console.error("Expense tracking process error:", error);
+      const message = error instanceof Error ? error.message : "Failed to process file";
+      await send({ error: message });
+    } finally {
+      await writer.close();
+    }
+  })();
+
+  return new Response(readable, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 }
