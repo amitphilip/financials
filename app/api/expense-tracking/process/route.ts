@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic, { toFile } from "@anthropic-ai/sdk";
+import Anthropic from "@anthropic-ai/sdk";
 import { auth } from "@clerk/nextjs/server";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -102,39 +102,27 @@ export async function POST(request: NextRequest) {
       csvContent = await file.text();
     }
 
-    // Upload to Claude Files API
-    const uploadName = fileName.replace(/\.xlsx?$/i, ".csv");
-    const csvBytes = Buffer.from(csvContent, "utf-8");
-
-    const uploadedFile = await (client.beta.files as any).upload({
-      file: await toFile(csvBytes, uploadName, { type: "text/plain" }),
-    });
-
     // Parse and categorise with Claude
-    const response = await (client.messages as any).create({
+    const response = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 8096,
       messages: [
         {
           role: "user",
           content: [
-            {
-              type: "document",
-              source: { type: "file", file_id: uploadedFile.id },
-            },
             { type: "text", text: PARSE_PROMPT },
+            { type: "text", text: `\n\nBank statement CSV:\n\n${csvContent}` },
           ],
         },
       ],
-      betas: ["files-api-2025-04-14"],
     });
 
-    const textBlock = response.content.find((c: { type: string }) => c.type === "text");
+    const textBlock = response.content.find((c) => c.type === "text");
     if (!textBlock || textBlock.type !== "text") {
       throw new Error("No text response from Claude");
     }
 
-    const raw = (textBlock.text as string)
+    const raw = textBlock.text
       .trim()
       .replace(/^```json\s*/i, "")
       .replace(/\s*```$/i, "");
@@ -146,7 +134,7 @@ export async function POST(request: NextRequest) {
     };
 
     const result: ProcessedFile = {
-      fileId: uploadedFile.id as string,
+      fileId: crypto.randomUUID(),
       fileName,
       transactions: parsed.transactions ?? [],
       dateFrom: parsed.dateRange?.from ?? "",
