@@ -64,20 +64,23 @@ export function calculate(
       ? Math.pow(property.currentValue / property.purchasePrice, 1 / yearsOwned) - 1
       : 0;
 
+  // Fall back to currentBalance if originalAmount not provided
+  const effectiveLoanAmount = loan.originalAmount > 0 ? loan.originalAmount : loan.currentBalance;
+
   // Monthly payment (standard amortisation)
   const monthlyRate = loan.interestRate / 100 / 12;
   const totalMonths = loan.termYears * 12;
   const monthlyPayment =
-    loan.originalAmount > 0 && monthlyRate > 0
-      ? (loan.originalAmount * (monthlyRate * Math.pow(1 + monthlyRate, totalMonths))) /
+    effectiveLoanAmount > 0 && monthlyRate > 0
+      ? (effectiveLoanAmount * (monthlyRate * Math.pow(1 + monthlyRate, totalMonths))) /
         (Math.pow(1 + monthlyRate, totalMonths) - 1)
-      : loan.originalAmount > 0
-        ? loan.originalAmount / totalMonths
+      : effectiveLoanAmount > 0
+        ? effectiveLoanAmount / totalMonths
         : 0;
 
   // Build year-by-year data
   const yearlyData: YearlyRow[] = [];
-  let balance = loan.originalAmount;
+  let balance = effectiveLoanAmount;
 
   const years = property.currentYear - property.purchaseYear;
 
@@ -113,14 +116,19 @@ export function calculate(
       }
     }
 
+    // At the current year, snap to the actual balance the user provided so
+    // the chart equity matches the "Current equity" stat card.
+    const displayBalance =
+      y === years && loan.currentBalance > 0 ? loan.currentBalance : balance;
+
     yearlyData.push({
       year,
       propertyValue: Math.round(propertyValue),
       yoyGrowthPct,
       interestPaid: Math.round(yearInterest),
       principalPaid: Math.round(yearPrincipal),
-      loanBalance: Math.round(balance),
-      equity: Math.round(propertyValue - balance),
+      loanBalance: Math.round(displayBalance),
+      equity: Math.round(propertyValue - displayBalance),
     });
   }
 
