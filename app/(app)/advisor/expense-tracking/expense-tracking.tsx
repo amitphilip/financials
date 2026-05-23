@@ -1,6 +1,51 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+
+// ─── Upload progress indicator ─────────────────────────────────────────────────
+
+const PROCESSING_STAGES = [
+  "Reading transactions…",
+  "Identifying merchants…",
+  "Categorising spend…",
+  "Detecting transfers…",
+  "Finalising…",
+];
+
+function UploadProgress({ fileName }: { fileName: string }) {
+  const [elapsed, setElapsed] = useState(0);
+  const [stageIndex, setStageIndex] = useState(0);
+
+  useEffect(() => {
+    const tick = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(tick);
+  }, []);
+
+  useEffect(() => {
+    const advance = setInterval(
+      () => setStageIndex((i) => Math.min(i + 1, PROCESSING_STAGES.length - 1)),
+      Math.floor(15000 / PROCESSING_STAGES.length)
+    );
+    return () => clearInterval(advance);
+  }, []);
+
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  const timeLabel = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+  return (
+    <div className="flex items-center gap-3">
+      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium truncate">{fileName}</p>
+        <p className="text-xs text-muted-foreground">
+          {PROCESSING_STAGES[stageIndex]}
+          <span className="ml-2 tabular-nums opacity-60">{timeLabel}</span>
+        </p>
+      </div>
+    </div>
+  );
+}
 import {
   Bar,
   BarChart,
@@ -197,7 +242,32 @@ export function ExpenseTracking() {
             const err = await res.json().catch(() => ({}));
             throw new Error((err as { error?: string }).error ?? "Upload failed");
           }
-          return res.json() as Promise<ProcessedFile>;
+
+          // Read SSE stream — heartbeats keep the connection alive,
+          // the final event carries { done: true, result } or { error }
+          const reader = res.body!.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const event = JSON.parse(line.slice(6)) as {
+                done?: boolean;
+                result?: ProcessedFile;
+                error?: string;
+                heartbeat?: boolean;
+                stage?: string;
+              };
+              if (event.error) throw new Error(event.error);
+              if (event.done && event.result) return event.result;
+            }
+          }
+          throw new Error("Stream ended without a result");
         })
       );
 
@@ -324,13 +394,7 @@ export function ExpenseTracking() {
         {uploadingFiles.length > 0 && (
           <div className="px-4 pb-3 space-y-2">
             {uploadingFiles.map((name) => (
-              <div key={name} className="flex items-center gap-3">
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium truncate">{name}</p>
-                  <p className="text-xs text-muted-foreground">Uploading and categorising…</p>
-                </div>
-              </div>
+              <UploadProgress key={name} fileName={name} />
             ))}
           </div>
         )}
