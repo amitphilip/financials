@@ -53,11 +53,12 @@ export async function loadExpenseTracking(): Promise<SavedExpenseTracking | null
   for (const doc of docs) {
     if (!doc.payload) continue;
     try {
-      const { file, transactions: txs } = JSON.parse(
-        decrypt(doc.payload as string, ids.effectiveUserId)
-      ) as { file: FileRecord; transactions: Transaction[] };
-      files.push(file);
-      transactions.push(...txs);
+      const parsed = JSON.parse(decrypt(doc.payload as string, ids.effectiveUserId));
+      // New format: { file, transactions }
+      // Old format (pre-migration): { files, transactions } — skip silently
+      if (!parsed.file) continue;
+      files.push(parsed.file as FileRecord);
+      transactions.push(...(parsed.transactions as Transaction[]));
     } catch {
       // Skip corrupted documents rather than failing the whole load
     }
