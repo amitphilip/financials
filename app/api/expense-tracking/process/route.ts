@@ -120,61 +120,96 @@ export async function POST(request: NextRequest) {
         csvContent = await file.text();
       }
 
-      await send({ stage: "Analysing transactions…" });
+      // Split CSV into chunks of 200 data rows so output never exceeds token limits
+      const CHUNK_SIZE = 200;
+      const csvLines = csvContent.split("\n");
+      const header = csvLines[0] ?? "";
+      const dataLines = csvLines.slice(1).filter((l) => l.trim() !== "");
+      const chunks =
+        dataLines.length === 0
+          ? [csvContent]
+          : Array.from(
+              { length: Math.ceil(dataLines.length / CHUNK_SIZE) },
+              (_, i) =>
+                [header, ...dataLines.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)].join("\n")
+            );
 
-      // Heartbeat every 5s to keep the connection alive during Claude processing
-      heartbeat = setInterval(() => send({ heartbeat: true }), 5000);
-
-      const stream = client.messages.stream({
-        model: "claude-sonnet-4-6",
-        max_tokens: 32000,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: PARSE_PROMPT },
-              { type: "text", text: `\n\nBank statement CSV:\n\n${csvContent}` },
-            ],
-          },
-        ],
+      await send({
+        stage:
+          chunks.length === 1
+            ? "Analysing transactions…"
+            : `Processing ${chunks.length} batches…`,
       });
 
-      const response = await stream.finalMessage();
+      // Heartbeat every 5s to keep the SSE connection alive during Claude calls
+      heartbeat = setInterval(() => send({ heartbeat: true }), 5000);
+
+      const allTransactions: RawTransaction[] = [];
+      let dateFrom = "";
+      let dateTo = "";
+      let accountInfo = "";
+
+      for (let i = 0; i < chunks.length; i++) {
+        if (chunks.length > 1) {
+          await send({ stage: `Batch ${i + 1} of ${chunks.length}…` });
+        }
+
+        const response = await client.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 16000,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: PARSE_PROMPT },
+                { type: "text", text: `\n\nBank statement CSV:\n\n${chunks[i]}` },
+              ],
+            },
+          ],
+        });
+
+        if (response.stop_reason === "max_tokens") {
+          throw new Error(
+            `Batch ${i + 1} still exceeded the token limit — the file may have unusually wide rows.`
+          );
+        }
+
+        const textBlock = response.content.find((c) => c.type === "text");
+        if (!textBlock || textBlock.type !== "text") {
+          throw new Error(`No response from Claude for batch ${i + 1}`);
+        }
+
+        const raw = textBlock.text
+          .trim()
+          .replace(/^```json\s*/i, "")
+          .replace(/\s*```$/i, "");
+
+        const parsed = JSON.parse(raw) as {
+          transactions: RawTransaction[];
+          dateRange: { from: string; to: string };
+          accountInfo: string;
+        };
+
+        allTransactions.push(...(parsed.transactions ?? []));
+
+        const from = parsed.dateRange?.from ?? "";
+        const to = parsed.dateRange?.to ?? "";
+        if (from && (!dateFrom || from < dateFrom)) dateFrom = from;
+        if (to && (!dateTo || to > dateTo)) dateTo = to;
+        if (!accountInfo && parsed.accountInfo) accountInfo = parsed.accountInfo;
+      }
+
       clearInterval(heartbeat);
       heartbeat = undefined;
-
-      if (response.stop_reason === "max_tokens") {
-        throw new Error(
-          "Bank statement is too large to process in one pass. Try splitting it into smaller date ranges."
-        );
-      }
-
-      const textBlock = response.content.find((c) => c.type === "text");
-      if (!textBlock || textBlock.type !== "text") {
-        throw new Error("No text response from Claude");
-      }
-
-      await send({ stage: "Categorising spend…" });
-
-      const raw = textBlock.text
-        .trim()
-        .replace(/^```json\s*/i, "")
-        .replace(/\s*```$/i, "");
-
-      const parsed = JSON.parse(raw) as {
-        transactions: RawTransaction[];
-        dateRange: { from: string; to: string };
-        accountInfo: string;
-      };
 
       const result: ProcessedFile = {
         fileId: crypto.randomUUID(),
         fileName,
-        transactions: parsed.transactions ?? [],
-        dateFrom: parsed.dateRange?.from ?? "",
-        dateTo: parsed.dateRange?.to ?? "",
-        rowCount: (parsed.transactions ?? []).length,
-        accountInfo: parsed.accountInfo ?? "",
+        transactions: allTransactions,
+        dateFrom,
+        dateTo,
+        rowCount: allTransactions.length,
+        accountInfo,
       };
 
       await send({ done: true, result });

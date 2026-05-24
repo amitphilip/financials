@@ -60,6 +60,21 @@ export async function saveExpenseTracking(data: SavedExpenseTracking): Promise<v
   );
 }
 
+export async function addExpenseData(
+  fileRecord: FileRecord,
+  newTransactions: Transaction[]
+): Promise<void> {
+  const ids = await resolveEffectiveUserId();
+  if (!ids) throw new Error("Unauthorized");
+
+  const existing = await loadExpenseTracking();
+  const updated: SavedExpenseTracking = {
+    files: [...(existing?.files ?? []), fileRecord],
+    transactions: [...(existing?.transactions ?? []), ...newTransactions],
+  };
+  await saveExpenseTracking(updated);
+}
+
 export async function deleteExpenseFile(fileId: string): Promise<void> {
   const ids = await resolveEffectiveUserId();
   if (!ids) throw new Error("Unauthorized");

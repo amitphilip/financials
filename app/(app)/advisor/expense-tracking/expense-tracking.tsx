@@ -63,9 +63,9 @@ import { HiddenNumber } from "@/components/ui/hidden-number";
 import { cn } from "@/lib/utils";
 
 import {
+  addExpenseData,
   deleteExpenseFile,
   loadExpenseTracking,
-  saveExpenseTracking,
   type FileRecord,
   type Transaction,
 } from "./actions";
@@ -150,6 +150,9 @@ export function ExpenseTracking() {
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Always-current ref so processFiles never reads stale closure state
+  const filesRef = useRef<FileRecord[]>(files);
+  useEffect(() => { filesRef.current = files; }, [files]);
 
   // Load persisted data on mount
   useEffect(() => {
@@ -206,6 +209,17 @@ export function ExpenseTracking() {
       ? `${format(parseISO(coverFrom), "d MMM yyyy")} – ${format(parseISO(coverTo), "d MMM yyyy")}`
       : "—";
 
+  // Weeks and months spanned — used for per-category averages
+  const coverDays =
+    coverFrom && coverTo
+      ? Math.max(
+          1,
+          (parseISO(coverTo).getTime() - parseISO(coverFrom).getTime()) / 86400000 + 1
+        )
+      : 0;
+  const coverWeeks = coverDays / 7;
+  const coverMonths = coverDays / 30.4375;
+
   // ─── Upload handler ───────────────────────────────────────────────────────
 
   const processFiles = useCallback(
@@ -218,14 +232,14 @@ export function ExpenseTracking() {
         return;
       }
 
-      // Check for duplicates
-      const duplicates = incoming.filter((f) => files.some((r) => r.fileName === f.name));
+      // Check for duplicates against current state (files ref keeps this fresh)
+      const duplicates = incoming.filter((f) => filesRef.current.some((r) => r.fileName === f.name));
       if (duplicates.length > 0) {
         toast.warning(
           `${duplicates.map((d) => d.name).join(", ")} already uploaded — skipping.`
         );
       }
-      const toProcess = incoming.filter((f) => !files.some((r) => r.fileName === f.name));
+      const toProcess = incoming.filter((f) => !filesRef.current.some((r) => r.fileName === f.name));
       if (toProcess.length === 0) return;
 
       setUploadingFiles((prev) => [...prev, ...toProcess.map((f) => f.name)]);
@@ -273,46 +287,41 @@ export function ExpenseTracking() {
 
       setUploadingFiles((prev) => prev.filter((n) => !toProcess.map((f) => f.name).includes(n)));
 
-      const newFiles: FileRecord[] = [];
-      const newTransactions: Transaction[] = [];
-
-      results.forEach((r, i) => {
-        if (r.status === "rejected") {
-          toast.error(`${toProcess[i].name}: ${r.reason?.message ?? "Failed"}`);
-          return;
-        }
-        const data = r.value;
-        newFiles.push({
-          fileId: data.fileId,
-          fileName: data.fileName,
-          uploadedAt: new Date().toISOString(),
-          rowCount: data.rowCount,
-          dateFrom: data.dateFrom,
-          dateTo: data.dateTo,
-          accountInfo: data.accountInfo,
-        });
-        data.transactions.forEach((tx) => {
-          newTransactions.push({
+      await Promise.allSettled(
+        results.map(async (r, i) => {
+          if (r.status === "rejected") {
+            toast.error(`${toProcess[i].name}: ${r.reason?.message ?? "Failed"}`);
+            return;
+          }
+          const data = r.value;
+          const fileRecord: FileRecord = {
+            fileId: data.fileId,
+            fileName: data.fileName,
+            uploadedAt: new Date().toISOString(),
+            rowCount: data.rowCount,
+            dateFrom: data.dateFrom,
+            dateTo: data.dateTo,
+            accountInfo: data.accountInfo,
+          };
+          const fileTx: Transaction[] = data.transactions.map((tx) => ({
             ...tx,
             id: generateId(),
             sourceFileId: data.fileId,
+          }));
+
+          await addExpenseData(fileRecord, fileTx).catch(() => {
+            toast.error(`${data.fileName}: Failed to save — please try again.`);
+            return;
           });
-        });
-        toast.success(`${data.fileName}: ${data.rowCount} transactions imported.`);
-      });
 
-      if (newFiles.length === 0) return;
-
-      const updatedFiles = [...files, ...newFiles];
-      const updatedTx = [...transactions, ...newTransactions];
-      setFiles(updatedFiles);
-      setTransactions(updatedTx);
-
-      await saveExpenseTracking({ files: updatedFiles, transactions: updatedTx }).catch(() =>
-        toast.error("Failed to save — please try again.")
+          // Functional updates so concurrent uploads don't overwrite each other
+          setFiles((prev) => [...prev, fileRecord]);
+          setTransactions((prev) => [...prev, ...fileTx]);
+          toast.success(`${data.fileName}: ${data.rowCount} transactions imported.`);
+        })
       );
     },
-    [files, transactions]
+    []
   );
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -521,6 +530,8 @@ export function ExpenseTracking() {
               {byCategory.map(([cat, amount], i) => {
                 const pct = totalSpend > 0 ? (amount / totalSpend) * 100 : 0;
                 const colorVar = `var(--chart-${(i % 5) + 1})`;
+                const wkAvg = coverWeeks > 0 ? Math.round(amount / coverWeeks) : 0;
+                const moAvg = coverMonths > 0 ? Math.round(amount / coverMonths) : 0;
                 return (
                   <div key={cat}>
                     <div className="flex items-center gap-2 mb-1">
@@ -534,10 +545,21 @@ export function ExpenseTracking() {
                       <span className="text-xs tabular-nums text-muted-foreground">
                         {pct.toFixed(0)}%
                       </span>
-                      <span className="text-xs tabular-nums font-semibold w-20 text-right">
-                        <span className="text-xs font-normal">$</span>
-                        <HiddenNumber value={Math.round(amount)} />
-                      </span>
+                      <div className="text-right">
+                        <p className="text-xs tabular-nums font-semibold">
+                          <span className="font-normal">$</span>
+                          <HiddenNumber value={Math.round(amount)} />
+                        </p>
+                        {coverDays > 0 && (
+                          <p className="text-[10px] tabular-nums text-muted-foreground leading-tight">
+                            <span className="font-normal">$</span>
+                            <HiddenNumber value={wkAvg} />
+                            <span className="font-normal">/wk · $</span>
+                            <HiddenNumber value={moAvg} />
+                            <span className="font-normal">/mo</span>
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <div className="h-1 rounded-full bg-muted overflow-hidden">
                       <div
