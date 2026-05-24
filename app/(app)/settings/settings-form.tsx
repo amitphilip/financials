@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Mail, Pencil } from "lucide-react";
+import { CheckCircle2, Database, Loader2, Mail, Pencil, XCircle } from "lucide-react";
 
 import { invitePartner, saveUserConfig, type UserConfig } from "@/app/user-config-actions";
+import { checkDbConnection } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,19 @@ export function SettingsForm({ config }: Props) {
   const [name, setName] = useState(config.name);
   const [partnerName, setPartnerName] = useState(config.partnerName);
   const [savingProfile, setSavingProfile] = useState(false);
+
+  // DB connection check
+  type DbStatus = { ok: true; latencyMs: number } | { ok: false; error: string } | null;
+  const [dbStatus, setDbStatus] = useState<DbStatus>(null);
+  const [checkingDb, setCheckingDb] = useState(false);
+
+  async function handleCheckDb() {
+    setCheckingDb(true);
+    setDbStatus(null);
+    const result = await checkDbConnection();
+    setDbStatus(result);
+    setCheckingDb(false);
+  }
 
   // Partner invite
   const [partnerEmail, setPartnerEmail] = useState(config.partnerEmail ?? "");
@@ -201,6 +215,48 @@ export function SettingsForm({ config }: Props) {
                 <p className="text-sm text-destructive">{inviteError}</p>
               )}
             </form>
+          )}
+        </CardContent>
+      </Card>
+      {/* ── System ── */}
+      <Card className="rounded-2xl shadow-md">
+        <CardHeader className="pb-3 pt-5 px-5">
+          <CardTitle className="text-base font-semibold">System</CardTitle>
+        </CardHeader>
+        <CardContent className="px-5 pb-6 grid gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Database className="size-4 text-muted-foreground" />
+              <span className="text-sm">Database connection</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={handleCheckDb}
+              disabled={checkingDb}
+            >
+              {checkingDb ? (
+                <><Loader2 className="size-3.5 animate-spin mr-1.5" />Checking…</>
+              ) : (
+                "Check"
+              )}
+            </Button>
+          </div>
+          {dbStatus !== null && (
+            dbStatus.ok ? (
+              <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 dark:border-green-900 dark:bg-green-950">
+                <CheckCircle2 className="size-4 shrink-0 text-green-600" />
+                <p className="text-xs text-green-700 dark:text-green-400">
+                  Connected <span className="tabular-nums ml-1 opacity-70">{dbStatus.latencyMs}ms</span>
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
+                <XCircle className="size-4 shrink-0 text-destructive mt-0.5" />
+                <p className="text-xs text-destructive break-all">{dbStatus.error}</p>
+              </div>
+            )
           )}
         </CardContent>
       </Card>
