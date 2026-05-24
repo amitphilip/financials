@@ -153,6 +153,9 @@ export function ExpenseTracking() {
   // Always-current ref so processFiles never reads stale closure state
   const filesRef = useRef<FileRecord[]>(files);
   useEffect(() => { filesRef.current = files; }, [files]);
+  // Serialises all DB writes — prevents concurrent addExpenseData calls racing
+  // when two separate processFiles invocations are in-flight at the same time
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   // Load persisted data on mount
   useEffect(() => {
@@ -287,39 +290,48 @@ export function ExpenseTracking() {
 
       setUploadingFiles((prev) => prev.filter((n) => !toProcess.map((f) => f.name).includes(n)));
 
-      await Promise.allSettled(
-        results.map(async (r, i) => {
-          if (r.status === "rejected") {
-            toast.error(`${toProcess[i].name}: ${r.reason?.message ?? "Failed"}`);
-            return;
-          }
-          const data = r.value;
-          const fileRecord: FileRecord = {
-            fileId: data.fileId,
-            fileName: data.fileName,
-            uploadedAt: new Date().toISOString(),
-            rowCount: data.rowCount,
-            dateFrom: data.dateFrom,
-            dateTo: data.dateTo,
-            accountInfo: data.accountInfo,
-          };
-          const fileTx: Transaction[] = data.transactions.map((tx) => ({
-            ...tx,
-            id: generateId(),
-            sourceFileId: data.fileId,
-          }));
+      // Chain each save onto the shared queue so concurrent processFiles invocations
+      // (e.g. file 2 uploaded while file 1 is still being processed by Claude) never
+      // interleave their DB read-modify-writes and lose data.
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (r.status === "rejected") {
+          toast.error(`${toProcess[i].name}: ${r.reason?.message ?? "Failed"}`);
+          continue;
+        }
+        const data = r.value;
+        const fileRecord: FileRecord = {
+          fileId: data.fileId,
+          fileName: data.fileName,
+          uploadedAt: new Date().toISOString(),
+          rowCount: data.rowCount,
+          dateFrom: data.dateFrom,
+          dateTo: data.dateTo,
+          accountInfo: data.accountInfo,
+        };
+        const fileTx: Transaction[] = data.transactions.map((tx) => ({
+          ...tx,
+          id: generateId(),
+          sourceFileId: data.fileId,
+        }));
 
-          await addExpenseData(fileRecord, fileTx).catch(() => {
+        const savePromise = saveQueueRef.current.then(async () => {
+          const saved = await addExpenseData(fileRecord, fileTx)
+            .then(() => true)
+            .catch(() => false);
+
+          if (!saved) {
             toast.error(`${data.fileName}: Failed to save — please try again.`);
             return;
-          });
-
-          // Functional updates so concurrent uploads don't overwrite each other
+          }
           setFiles((prev) => [...prev, fileRecord]);
           setTransactions((prev) => [...prev, ...fileTx]);
           toast.success(`${data.fileName}: ${data.rowCount} transactions imported.`);
-        })
-      );
+        });
+        // Advance the tail of the queue, then await so this loop stays sequential too
+        saveQueueRef.current = savePromise;
+        await savePromise;
+      }
     },
     []
   );
