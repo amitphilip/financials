@@ -292,41 +292,38 @@ export function ExpenseTracking() {
 
       setUploadingFiles((prev) => prev.filter((n) => !toProcess.map((f) => f.name).includes(n)));
 
-      await Promise.all(
-        results.map(async (r, i) => {
-          if (r.status === "rejected") {
-            toast.error(`${toProcess[i].name}: ${r.reason?.message ?? "Failed"}`);
-            return;
-          }
-          const data = r.value;
-          const fileRecord: FileRecord = {
-            fileId: data.fileId,
-            fileName: data.fileName,
-            uploadedAt: new Date().toISOString(),
-            rowCount: data.rowCount,
-            dateFrom: data.dateFrom,
-            dateTo: data.dateTo,
-            accountInfo: data.accountInfo,
-          };
-          const fileTx: Transaction[] = data.transactions.map((tx) => ({
-            ...tx,
-            id: generateId(),
-            sourceFileId: data.fileId,
-          }));
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (r.status === "rejected") {
+          toast.error(`${toProcess[i].name}: ${r.reason?.message ?? "Failed"}`);
+          continue;
+        }
+        const data = r.value;
+        const fileRecord: FileRecord = {
+          fileId: data.fileId,
+          fileName: data.fileName,
+          uploadedAt: new Date().toISOString(),
+          rowCount: data.rowCount,
+          dateFrom: data.dateFrom,
+          dateTo: data.dateTo,
+          accountInfo: data.accountInfo,
+        };
+        const fileTx: Transaction[] = data.transactions.map((tx) => ({
+          ...tx,
+          id: generateId(),
+          sourceFileId: data.fileId,
+        }));
 
-          const saved = await addExpenseData(fileRecord, fileTx)
-            .then(() => true)
-            .catch(() => false);
-
-          if (!saved) {
-            toast.error(`${data.fileName}: Failed to save — please try again.`);
-            return;
-          }
+        try {
+          await addExpenseData(fileRecord, fileTx);
           setFiles((prev) => [...prev, fileRecord]);
           setTransactions((prev) => [...prev, ...fileTx]);
           toast.success(`${data.fileName}: ${data.rowCount} transactions imported.`);
-        })
-      );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          toast.error(`${data.fileName}: Failed to save — ${msg}`);
+        }
+      }
     },
     []
   );

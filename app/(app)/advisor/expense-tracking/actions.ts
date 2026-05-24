@@ -79,12 +79,12 @@ export async function addExpenseData(
     ids.effectiveUserId
   );
   const col = await collection();
-  await col.insertOne({
-    userId: ids.effectiveUserId,
-    fileId: fileRecord.fileId,
-    payload,
-    uploadedAt: new Date(),
-  });
+  // upsert so a duplicate fileId (e.g. retry) overwrites rather than throws
+  await col.updateOne(
+    { userId: ids.effectiveUserId, fileId: fileRecord.fileId },
+    { $set: { userId: ids.effectiveUserId, fileId: fileRecord.fileId, payload, uploadedAt: new Date() } },
+    { upsert: true }
+  );
 }
 
 export async function deleteExpenseFile(fileId: string): Promise<void> {
