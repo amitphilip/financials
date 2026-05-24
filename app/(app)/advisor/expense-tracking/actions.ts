@@ -35,29 +35,35 @@ async function collection() {
   return client.db("financials").collection("expense_tracking");
 }
 
+// Each uploaded file is stored as its own document:
+// { userId, fileId, payload: encrypt({ file: FileRecord, transactions: Transaction[] }) }
+// This makes addExpenseData an atomic insertOne — no read-modify-write, no race condition.
+
 export async function loadExpenseTracking(): Promise<SavedExpenseTracking | null> {
   const ids = await resolveEffectiveUserId();
   if (!ids) throw new Error("Unauthorized");
 
   const col = await collection();
-  const doc = await col.findOne({ userId: ids.effectiveUserId });
-  if (!doc?.payload) return null;
+  const docs = await col.find({ userId: ids.effectiveUserId }).toArray();
+  if (docs.length === 0) return null;
 
-  const parsed = JSON.parse(decrypt(doc.payload as string, ids.effectiveUserId));
-  return parsed as SavedExpenseTracking;
-}
+  const files: FileRecord[] = [];
+  const transactions: Transaction[] = [];
 
-export async function saveExpenseTracking(data: SavedExpenseTracking): Promise<void> {
-  const ids = await resolveEffectiveUserId();
-  if (!ids) throw new Error("Unauthorized");
+  for (const doc of docs) {
+    if (!doc.payload) continue;
+    try {
+      const { file, transactions: txs } = JSON.parse(
+        decrypt(doc.payload as string, ids.effectiveUserId)
+      ) as { file: FileRecord; transactions: Transaction[] };
+      files.push(file);
+      transactions.push(...txs);
+    } catch {
+      // Skip corrupted documents rather than failing the whole load
+    }
+  }
 
-  const payload = encrypt(JSON.stringify(data), ids.effectiveUserId);
-  const col = await collection();
-  await col.updateOne(
-    { userId: ids.effectiveUserId },
-    { $set: { userId: ids.effectiveUserId, payload, updatedAt: new Date() } },
-    { upsert: true }
-  );
+  return files.length > 0 ? { files, transactions } : null;
 }
 
 export async function addExpenseData(
@@ -67,25 +73,23 @@ export async function addExpenseData(
   const ids = await resolveEffectiveUserId();
   if (!ids) throw new Error("Unauthorized");
 
-  const existing = await loadExpenseTracking();
-  const updated: SavedExpenseTracking = {
-    files: [...(existing?.files ?? []), fileRecord],
-    transactions: [...(existing?.transactions ?? []), ...newTransactions],
-  };
-  await saveExpenseTracking(updated);
+  const payload = encrypt(
+    JSON.stringify({ file: fileRecord, transactions: newTransactions }),
+    ids.effectiveUserId
+  );
+  const col = await collection();
+  await col.insertOne({
+    userId: ids.effectiveUserId,
+    fileId: fileRecord.fileId,
+    payload,
+    uploadedAt: new Date(),
+  });
 }
 
 export async function deleteExpenseFile(fileId: string): Promise<void> {
   const ids = await resolveEffectiveUserId();
   if (!ids) throw new Error("Unauthorized");
 
-  const existing = await loadExpenseTracking();
-  if (!existing) return;
-
-  const updated: SavedExpenseTracking = {
-    files: existing.files.filter((f) => f.fileId !== fileId),
-    transactions: existing.transactions.filter((t) => t.sourceFileId !== fileId),
-  };
-
-  await saveExpenseTracking(updated);
+  const col = await collection();
+  await col.deleteOne({ userId: ids.effectiveUserId, fileId });
 }
