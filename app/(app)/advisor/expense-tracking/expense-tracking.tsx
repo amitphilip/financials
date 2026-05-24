@@ -159,11 +159,16 @@ export function ExpenseTracking() {
 
   // Load persisted data on mount
   useEffect(() => {
-    loadExpenseTracking().then((saved) => {
-      if (!saved) return;
-      setFiles(saved.files);
-      setTransactions(saved.transactions);
-    });
+    loadExpenseTracking()
+      .then((saved) => {
+        if (!saved) return;
+        setFiles(saved.files);
+        setTransactions(saved.transactions);
+      })
+      .catch((err) => {
+        console.error("Failed to load expense data:", err);
+        toast.error("Could not load your expense data. Please refresh.");
+      });
   }, []);
 
   // ─── Computed spend data ──────────────────────────────────────────────────
